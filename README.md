@@ -28,7 +28,8 @@ ros2 fair list             # table of saved missions
 ros2 fair diff [A] [B]     # compare two missions, show only what changed
 ```
 
-All verbs accept `--debug` for verbose logging to stderr.
+All verbs accept `--debug` for verbose logging to stderr. `mission_status`,
+`list`, and `diff` accept `--json` for machine-readable output (for scripts).
 
 `mission_close` accepts `--note TEXT` to attach post-mission notes without
 an interactive prompt.

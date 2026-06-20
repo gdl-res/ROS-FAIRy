@@ -90,6 +90,10 @@ def run(args, console: Console | None = None) -> int:
         console.print(f"[red]{exc}[/red]")
         return 1
 
+    if getattr(args, "json", False):
+        print(json.dumps(diff_ui.diff_as_dict(record_a, record_b), indent=2))
+        return 0
+
     diff_ui.show_diff(record_a, record_b, console=console)
     return 0
 
@@ -106,6 +110,9 @@ class DiffVerb(VerbExtension):
             "mission_b", nargs="?",
             help="newer mission: number (1 = newest), archive path, or mission "
                  "ID. Defaults to the most recent mission.")
+        parser.add_argument(
+            "--json", action="store_true",
+            help="machine-readable output for scripts")
         parser.add_argument(
             "--debug", action="store_true",
             help="verbose logging to stderr (for engineers)")

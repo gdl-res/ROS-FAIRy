@@ -8,7 +8,7 @@ from rich.console import Console
 
 from fair_ros.manifest import builder
 from fair_ros.subcommands import (list_missions, mission_close,
-                                  mission_record, mission_start,
+                                  mission_diff, mission_record, mission_start,
                                   mission_status, setup as setup_cmd)
 from fair_ros.utils import fsio, paths
 from tests.unit.test_archive import _spool
@@ -195,6 +195,45 @@ def test_list_shows_missions(fair_dirs):
     args.operator = "nobody"
     assert list_missions.run(args, console=console) == 0
     assert "No missions found" in console.file.getvalue()
+
+
+def test_list_json(fair_dirs, capsys):
+    from fair_ros.archive import assembler
+    harvest, context = _spool(fair_dirs)
+    assembler.assemble(builder.build(harvest, context), harvest)
+
+    args = SimpleNamespace(operator=None, location=None, since=None,
+                           until=None, limit=20, path=False, json=True)
+    assert list_missions.run(args, console=_console()) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["total"] == 1
+    assert data["shown"] == 1
+    assert data["missions"][0]["operator"] == "Jane Doe"
+    assert data["missions"][0]["goal"] == "Survey eelgrass beds"
+
+
+def test_list_json_no_index(fair_dirs, capsys):
+    args = SimpleNamespace(json=True)
+    assert list_missions.run(args, console=_console()) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data == {"missions": [], "total": 0, "shown": 0}
+
+
+def test_diff_json(fair_dirs, capsys):
+    from fair_ros.archive import assembler
+    h1, c1 = _spool(fair_dirs)
+    assembler.assemble(builder.build(h1, c1), h1)
+    h2, c2 = _spool(fair_dirs)
+    c2["intent"]["goal"] = "A different goal entirely"
+    assembler.assemble(builder.build(h2, c2), h2)
+
+    args = SimpleNamespace(mission_a="2", mission_b="1", json=True)
+    assert mission_diff.run(args, console=_console()) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["mission_a"]["goal"] == "Survey eelgrass beds"   # older
+    assert data["mission_b"]["goal"] == "A different goal entirely"  # newer
+    goal_changes = data["changes"].get("mission_context", [])
+    assert any(c["label"] == "Goal" for c in goal_changes)
 
 
 # --- setup ---------------------------------------------------------------------

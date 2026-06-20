@@ -200,6 +200,32 @@ Options:
 - `--limit <n>` — default 20; footer line "Showing 20 of 134 missions" when
   truncated.
 - `--path` — adds the archive path column (for engineers copying data off).
+- `--json` — emits `{"missions": [...], "total": <n>, "shown": <n>}` to stdout,
+  one object per index row (all columns). Sanctioned JSON output for scripts;
+  bypasses the table and the plain-language empty/no-index messages (those
+  become an empty `missions` list).
 
 Empty result: "No missions found." Index file missing: "No missions have been
 saved on this robot yet."
+
+---
+
+## `ros2 fair diff [<mission_a>] [<mission_b>]`
+
+Compares two saved missions and shows only what changed, section by section
+(mission context, software, sensors, ROS graph, recordings). Sections with no
+differences are omitted.
+
+Each argument identifies a mission by **number** (`1` = newest, `2` =
+second-newest, …), **archive path**, or **mission ID**. With no arguments it
+compares the two most recent missions (`A` = older, `B` = newer); supplying a
+single argument is an error.
+
+Options:
+- `--json` — emits `{"mission_a": {…}, "mission_b": {…}, "changes": {<section>:
+  [{"label", "a", "b"}, …]}}` to stdout. `changes` contains only sections that
+  differ; `a`/`b` are the before/after values as shown in the table (empty `a` =
+  added in B, empty `b` = removed in B).
+
+Index file missing, an out-of-range number, or an unresolvable identifier each
+produce a plain-language error and exit 1.

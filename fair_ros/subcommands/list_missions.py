@@ -1,5 +1,6 @@
 """ros2 fair list — table of saved missions from the SQLite index."""
 
+import json
 from datetime import datetime
 
 from rich.console import Console
@@ -23,9 +24,14 @@ def _fmt_date(iso: str) -> str:
 def run(args, console: Console | None = None) -> int:
     _configure_logging(getattr(args, "debug", False))
     console = console or Console()
+    as_json = getattr(args, "json", False)
 
     if not paths.index_db_path().is_file():
-        console.print("No missions have been saved on this robot yet.")
+        if as_json:
+            print(json.dumps({"missions": [], "total": 0, "shown": 0},
+                             indent=2))
+        else:
+            console.print("No missions have been saved on this robot yet.")
         return 0
 
     rows, total = index.query(
@@ -34,6 +40,13 @@ def run(args, console: Console | None = None) -> int:
         since=getattr(args, "since", None),
         until=getattr(args, "until", None),
         limit=getattr(args, "limit", 20) or 20)
+
+    if as_json:
+        # Rows are already plain dicts of index columns (all JSON-native).
+        print(json.dumps(
+            {"missions": rows, "total": total, "shown": len(rows)}, indent=2))
+        return 0
+
     if not rows:
         console.print("No missions found.")
         return 0
@@ -87,6 +100,8 @@ class ListVerb(VerbExtension):
                             help="maximum rows to show (default 20)")
         parser.add_argument("--path", action="store_true",
                             help="also show archive directory paths")
+        parser.add_argument("--json", action="store_true",
+                            help="machine-readable output for scripts")
 
     def main(self, *, args):
         return run(args)

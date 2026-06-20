@@ -192,3 +192,38 @@ def show_diff(a: MissionRecord, b: MissionRecord,
         body = Group(*parts)
 
     console.print(Panel(body, title="Mission diff", border_style="cyan"))
+
+
+def _mission_summary(r: MissionRecord) -> dict:
+    return {
+        "mission_id": r.identity.mission_id,
+        "created_at": r.identity.created_at.isoformat(),
+        "operator": r.identity.operator_name,
+        "goal": r.intent.goal,
+        "location": r.intent.location_name,
+    }
+
+
+def diff_as_dict(a: MissionRecord, b: MissionRecord) -> dict:
+    """Machine-readable form of the same diff show_diff() renders.
+
+    `changes` holds only sections that differ; each change is the section's
+    label plus the before/after values (as displayed: empty `a` = added in B,
+    empty `b` = removed in B).
+    """
+    sections = {
+        "mission_context": _diff_context(a, b),
+        "software":        _diff_software(a, b),
+        "sensors":         _diff_sensors(a, b),
+        "ros_graph":       _diff_graph(a, b),
+        "recordings":      _diff_recordings(a, b),
+    }
+    changes = {
+        name: [{"label": label, "a": va, "b": vb} for label, va, vb in rows]
+        for name, rows in sections.items() if rows
+    }
+    return {
+        "mission_a": _mission_summary(a),
+        "mission_b": _mission_summary(b),
+        "changes": changes,
+    }
