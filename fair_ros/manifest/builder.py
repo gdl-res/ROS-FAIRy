@@ -20,6 +20,19 @@ class ManifestError(Exception):
     """Raised with a plain-language, user-facing message."""
 
 
+# Ordered list of harvest modules — single source of truth for harvest_status keys.
+# Add new modules here; callers that build a default status dict use this constant.
+HARVEST_MODULES: tuple[str, ...] = (
+    "robot_identity",
+    "system_info",
+    "python_env",
+    "hardware_devices",
+    "ros_graph",
+    "docker_info",
+    "ros_descriptions",
+)
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -53,7 +66,9 @@ def new_mission_context(operator_name: str, goal: str, location_name: str,
 def compose_harvest(identity: dict | None, system: dict | None,
                     graph: dict | None, docker: dict | None,
                     descriptions: dict | None,
-                    harvest_status: dict[str, str]) -> dict[str, Any]:
+                    harvest_status: dict[str, str],
+                    python_env: dict | None = None,
+                    hardware_devices: dict | None = None) -> dict[str, Any]:
     """Shape the harvest.json document from raw harvest module outputs.
 
     Any module's output may be None (failed/skipped); the document always has
@@ -64,6 +79,8 @@ def compose_harvest(identity: dict | None, system: dict | None,
     graph = graph or {}
     docker = docker or {}
     descriptions = descriptions or {}
+    py = python_env or {}
+    hw = hardware_devices or {}
 
     sensors = []
     live_topics = {t["name"] for t in graph.get("topics", [])}
@@ -82,6 +99,7 @@ def compose_harvest(identity: dict | None, system: dict | None,
             "apt_ros_versions": system.get("apt_ros_versions", {}),
             "docker_containers": docker.get("docker_containers", []),
             "fair_ros_version": fair_ros.__version__,
+            "python_env": py.get("python_env"),
         },
         "ros_graph": {
             "captured_at": graph.get("captured_at"),
@@ -92,6 +110,7 @@ def compose_harvest(identity: dict | None, system: dict | None,
             "tf_static": descriptions.get("tf_static"),
             "complete": graph.get("complete", False),
         },
+        "hardware_devices": hw.get("devices", []),
         "bags": [],
         "provenance": {
             "fair_ros_version": fair_ros.__version__,
@@ -103,6 +122,14 @@ def compose_harvest(identity: dict | None, system: dict | None,
             "harvest_status": harvest_status,
         },
         "raw_docker_inspect": docker.get("raw_inspect", []),
+        "raw_python_env": {
+            "pip_freeze": py.get("pip_freeze"),
+            "pip_list_json": py.get("pip_list_json"),
+        },
+        "raw_hardware": {
+            "lsusb_verbose": hw.get("lsusb_verbose"),
+            "dmesg_usb": hw.get("dmesg_usb"),
+        },
     }
 
 
@@ -174,6 +201,7 @@ def build(harvest: dict | None, context: dict | None) -> MissionRecord:
         ros_graph=harvest.get("ros_graph", {}),
         calibrations=harvest.get("calibrations", []),
         bags=harvest.get("bags", []),
+        hardware_devices=harvest.get("hardware_devices", []),
         provenance=harvest["provenance"],
     )
     record.provenance.field_confidence = _field_confidence(record)
@@ -197,6 +225,8 @@ def harvest_level_warnings(harvest: dict | None) -> list[str]:
     elif not (harvest.get("ros_graph") or {}).get("complete", False):
         warnings.append("Some software settings could not be captured in "
                         "time; the record may be missing a few details.")
+    if status.get("python_env") == "failed":
+        warnings.append("I couldn't capture the Python environment details.")
     if status.get("ros_descriptions") == "timeout":
         warnings.append("The robot's physical description wasn't being "
                         "published, so it isn't included.")

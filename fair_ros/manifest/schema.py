@@ -56,12 +56,45 @@ class DockerContainer(_Model):
     compose_file: Optional[str] = None
 
 
+class PythonPackage(_Model):
+    name: str
+    version: str
+    installer: Optional[str] = None
+    editable: bool = False
+    location: Optional[str] = None
+
+
+class PythonEnv(_Model):
+    executable: str
+    version: str
+    venv_path: Optional[str] = None
+    pip_version: Optional[str] = None
+    packages: list[PythonPackage] = Field(default_factory=list)
+    fair_ros_editable: bool = False
+    sys_path: list[str] = Field(default_factory=list)
+
+
+class HardwareDevice(_Model):
+    device_class: Optional[str] = None
+    vendor_id: Optional[str] = None
+    product_id: Optional[str] = None
+    vendor_name: Optional[str] = None
+    product_name: Optional[str] = None
+    serial_number: Optional[str] = None
+    device_path: Optional[str] = None
+    bus_path: Optional[str] = None
+    driver: Optional[str] = None
+    source_command: str
+    udev_properties: Optional[dict[str, str]] = None
+
+
 class Software(_Model):
     ros_distro: Optional[str] = None
     ros_packages: list[str] = Field(default_factory=list)
     apt_ros_versions: dict[str, str] = Field(default_factory=dict)
     docker_containers: list[DockerContainer] = Field(default_factory=list)
     fair_ros_version: str
+    python_env: Optional[PythonEnv] = None
 
 
 class TopicInfo(_Model):
@@ -137,4 +170,5 @@ class MissionRecord(_Model):
     ros_graph: RosGraph = Field(default_factory=RosGraph)
     calibrations: list[Calibration] = Field(default_factory=list)
     bags: list[Bag] = Field(default_factory=list)
+    hardware_devices: list[HardwareDevice] = Field(default_factory=list)
     provenance: Provenance

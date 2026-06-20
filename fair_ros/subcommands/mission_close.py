@@ -38,9 +38,7 @@ def _salvage_bags(harvest: dict | None) -> dict | None:
     if harvest is None:
         harvest = builder.compose_harvest(
             None, None, None, None, None,
-            {m: "failed" for m in ("robot_identity", "system_info",
-                                   "ros_graph", "docker_info",
-                                   "ros_descriptions")})
+            {m: "failed" for m in builder.HARVEST_MODULES})
     fsio.atomic_write_json(paths.harvest_json_path(), harvest)
     for bag_dir in missing:
         if (bag_dir / "metadata.yaml").is_file() or \

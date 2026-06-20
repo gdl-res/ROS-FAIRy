@@ -27,6 +27,9 @@ log = logging.getLogger("fair_ros.watchdog")
 BAG_INACTIVITY_S = 30
 RCLPY_TIMEOUT_S = 5
 DOCKER_TIMEOUT_S = 10
+PIP_TIMEOUT_S = 30
+HARDWARE_CMD_TIMEOUT_S = 10
+HARDWARE_TOTAL_TIMEOUT_S = 60
 ROS2_CLI_TIMEOUT_S = 20
 PARAM_DUMP_BUDGET_S = 60
 ROS_RETRY_INTERVAL_S = 60
@@ -50,8 +53,9 @@ def run_pipeline() -> dict[str, Any]:
 
     Returns the composed harvest.json document (without bags).
     """
-    from fair_ros.harvest import (docker_info, robot_identity,
-                                  ros_descriptions, ros_graph, system_info)
+    from fair_ros.harvest import (docker_info, hardware_devices, python_env,
+                                  robot_identity, ros_descriptions, ros_graph,
+                                  system_info)
 
     status: dict[str, str] = {}
     results: dict[str, Any] = {}
@@ -67,6 +71,16 @@ def run_pipeline() -> dict[str, Any]:
 
     attempt("robot_identity", robot_identity.harvest)
     attempt("system_info", system_info.harvest)
+
+    attempt("python_env", python_env.harvest)
+    if status["python_env"] == "ok":
+        status["python_env"] = (results["python_env"] or {}).get("status", "ok")
+
+    attempt("hardware_devices", hardware_devices.harvest)
+    if status["hardware_devices"] == "ok":
+        status["hardware_devices"] = \
+            (results["hardware_devices"] or {}).get("status", "ok")
+
     attempt("ros_graph", ros_graph.harvest)
     attempt("docker_info", docker_info.harvest)
     if status["docker_info"] == "ok" and \
@@ -86,6 +100,8 @@ def run_pipeline() -> dict[str, Any]:
         docker=results["docker_info"],
         descriptions=results["ros_descriptions"],
         harvest_status=status,
+        python_env=results["python_env"],
+        hardware_devices=results["hardware_devices"],
     )
 
 
@@ -331,9 +347,7 @@ def append_bag_record(bag_dir: Path) -> None:
     if harvest_doc is None:
         harvest_doc = builder.compose_harvest(
             None, None, None, None, None,
-            {m: "failed" for m in ("robot_identity", "system_info",
-                                   "ros_graph", "docker_info",
-                                   "ros_descriptions")})
+            {m: "failed" for m in builder.HARVEST_MODULES})
     sensors = harvest_doc.get("sensors", [])
     warnings = topic_health.analyse_bag(bag_dir, sensors)
     meta = topic_health.parse_bag_metadata(bag_dir)

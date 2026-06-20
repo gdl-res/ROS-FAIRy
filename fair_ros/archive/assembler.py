@@ -155,6 +155,31 @@ def assemble(record: MissionRecord, harvest_doc: dict[str, Any],
                         "name": "Raw harvest data",
                         "encodingFormat": "application/json"}]
         fsio.atomic_write_json(harvest_dir / "harvest.json", harvest_doc)
+        raw_py = harvest_doc.get("raw_python_env") or {}
+        pip_freeze = raw_py.get("pip_freeze")
+        if pip_freeze:
+            (harvest_dir / "pip_freeze.txt").write_text(pip_freeze,
+                                                        encoding="utf-8")
+            extra_files.append({"id": "harvest/pip_freeze.txt",
+                                 "name": "Python package freeze",
+                                 "encodingFormat": "text/plain"})
+
+        raw_hw = harvest_doc.get("raw_hardware") or {}
+        lsusb_v = raw_hw.get("lsusb_verbose")
+        if lsusb_v:
+            (harvest_dir / "lsusb_verbose.txt").write_text(lsusb_v,
+                                                           encoding="utf-8")
+            extra_files.append({"id": "harvest/lsusb_verbose.txt",
+                                 "name": "USB device descriptors",
+                                 "encodingFormat": "text/plain"})
+        dmesg_usb = raw_hw.get("dmesg_usb")
+        if dmesg_usb:
+            (harvest_dir / "dmesg_usb.txt").write_text(dmesg_usb,
+                                                        encoding="utf-8")
+            extra_files.append({"id": "harvest/dmesg_usb.txt",
+                                 "name": "Kernel hardware messages",
+                                 "encodingFormat": "text/plain"})
+
         if record.ros_graph.robot_description:
             (harvest_dir / "robot_description.urdf").write_text(
                 record.ros_graph.robot_description)
