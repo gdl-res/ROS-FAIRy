@@ -111,6 +111,12 @@ Trigger, whichever comes first:
    what is possible: file sizes, mtimes; mark the bag entry with a
    `never_published`-style warning "Recording ended unexpectedly").
 2. Run `utils/topic_health.py` over the bag metadata → `health_warnings`.
+   Metadata-level checks (`never_published`) run for any storage format.
+   Timestamp-level checks (`gap`, `low_rate`) need per-message receive times,
+   which are read through `utils/bag_storage.py`'s pluggable reader registry:
+   `sqlite3` is implemented; `mcap` (Jazzy's default) is a declared extension
+   point and currently yields metadata-level checks only. Callers never branch
+   on storage format — they consult `bag_storage.get_reader(storage_id)`.
 3. Append the `Bag` record to `harvest.json.bags[]` (atomic rewrite).
 4. Set `provenance.harvested_at`, remove W2, update `watchdog.state`, go IDLE.
 
