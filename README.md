@@ -89,7 +89,7 @@ Each saved mission is a self-contained directory:
 pip install -e '.[dev]'         # runtime deps + pytest, rocrate, ruff, mypy
 python3 -m pytest tests/        # no robot or live ROS graph required
 ruff check .                    # lint (enforced in CI)
-mypy fair_ros                   # type check (advisory)
+mypy fair_ros                   # type check (enforced in CI)
 ```
 
 Requires Python ≥ 3.10, pydantic ≥ 2.5, rich ≥ 13, PyYAML, inotify_simple.

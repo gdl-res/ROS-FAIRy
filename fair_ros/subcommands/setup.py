@@ -92,7 +92,8 @@ def ask_robot(console: Console, current: dict) -> dict:
 
 
 def ask_sensors(console: Console, current: dict) -> tuple[list, list]:
-    sensors, calibrations = [], []
+    sensors: list[dict] = []
+    calibrations: list[dict] = []
     live = _live_topics(console)
     if live:
         console.print(f"[dim]Live topics seen: {', '.join(live[:12])}"

@@ -5,7 +5,7 @@ try:
 except ImportError:  # pragma: no cover - exercised only outside ROS
     add_subparsers_on_demand = None
 
-    class CommandExtension:
+    class CommandExtension:  # type: ignore[no-redef]
         def add_arguments(self, parser, cli_name):
             pass
 

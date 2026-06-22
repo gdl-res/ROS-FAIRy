@@ -11,7 +11,7 @@ import sys
 try:
     from ros2cli.verb import VerbExtension
 except ImportError:  # pragma: no cover - exercised only outside ROS
-    class VerbExtension:
+    class VerbExtension:  # type: ignore[no-redef]
         """Stand-in with the same interface as ros2cli's VerbExtension."""
 
         def add_arguments(self, parser, cli_name):

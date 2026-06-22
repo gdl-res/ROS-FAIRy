@@ -192,18 +192,18 @@ def build(harvest: dict | None, context: dict | None) -> MissionRecord:
         identity["operator_contact"] = (harvest.get("robot") or {}).get(
             "owner_contact")
 
-    record = MissionRecord(
-        identity=identity,
-        intent=context["intent"],
-        robot=harvest.get("robot"),
-        sensors=harvest.get("sensors", []),
-        software=harvest["software"],
-        ros_graph=harvest.get("ros_graph", {}),
-        calibrations=harvest.get("calibrations", []),
-        bags=harvest.get("bags", []),
-        hardware_devices=harvest.get("hardware_devices", []),
-        provenance=harvest["provenance"],
-    )
+    record = MissionRecord.model_validate({
+        "identity": identity,
+        "intent": context["intent"],
+        "robot": harvest.get("robot"),
+        "sensors": harvest.get("sensors", []),
+        "software": harvest["software"],
+        "ros_graph": harvest.get("ros_graph", {}),
+        "calibrations": harvest.get("calibrations", []),
+        "bags": harvest.get("bags", []),
+        "hardware_devices": harvest.get("hardware_devices", []),
+        "provenance": harvest["provenance"],
+    })
     record.provenance.field_confidence = _field_confidence(record)
     return record
 

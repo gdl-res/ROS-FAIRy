@@ -94,6 +94,7 @@ def _diff_sensors(a: MissionRecord, b: MissionRecord) -> list[tuple]:
     for sid in sorted(set(sa) | set(sb)):
         s_a, s_b = sa.get(sid), sb.get(sid)
         if s_a is None:
+            assert s_b is not None  # sid came from sb's keys
             rows.append((s_b.make_model, "",
                          "✓ detected" if s_b.detected_at_start else "configured"))
         elif s_b is None:
@@ -181,8 +182,8 @@ def show_diff(a: MissionRecord, b: MissionRecord,
     changed = [(title, rows) for title, rows in sections if rows]
 
     if not changed:
-        body: object = Group(header, Text(""),
-                             Text("No differences found.", style="dim"))
+        body = Group(header, Text(""),
+                     Text("No differences found.", style="dim"))
     else:
         parts: list = [header]
         for title, rows in changed:

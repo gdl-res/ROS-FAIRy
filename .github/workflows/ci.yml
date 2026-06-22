@@ -24,10 +24,7 @@ jobs:
       - name: Ruff (lint)
         run: ruff check .
 
-      - name: Mypy (advisory)
-        # Type checking is informational for now: the existing codebase has
-        # known typing gaps being triaged. It must not block merges yet.
-        continue-on-error: true
+      - name: Mypy
         run: mypy fair_ros
 
   test:

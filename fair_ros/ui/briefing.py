@@ -4,6 +4,8 @@ Exactly five questions, plain language, under two minutes. Also reused by
 mission_close to fill in required answers the operator skipped.
 """
 
+from typing import Any
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
@@ -24,7 +26,7 @@ QUESTIONS = [
 def _ask_one(console: Console, field: str, prompt: str, required: bool,
              default: str | None) -> str | None:
     while True:
-        kwargs = {"default": default} if default else {}
+        kwargs: dict[str, Any] = {"default": default} if default else {}
         answer = Prompt.ask(prompt, console=console, **kwargs)
         answer = (answer or "").strip()
         if answer:

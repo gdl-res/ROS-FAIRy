@@ -73,8 +73,8 @@ def run(args, console: Console | None = None) -> int:
         console.print("No missions have been saved on this robot yet.")
         return 1
 
-    a_id = getattr(args, "mission_a", None)
-    b_id = getattr(args, "mission_b", None)
+    a_id: str | None = getattr(args, "mission_a", None)
+    b_id: str | None = getattr(args, "mission_b", None)
 
     if a_id is None and b_id is None:
         a_id, b_id = "2", "1"
@@ -82,6 +82,7 @@ def run(args, console: Console | None = None) -> int:
         console.print("[red]Provide either no arguments (compares the two most "
                       "recent missions) or two identifiers.[/red]")
         return 1
+    assert a_id is not None and b_id is not None  # both set or returned above
 
     try:
         record_a = _load(_resolve(a_id))

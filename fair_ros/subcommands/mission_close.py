@@ -86,6 +86,7 @@ def run(args, console: Console | None = None) -> int:
     if not (harvest or {}).get("bags"):
         console.print("There's nothing recorded yet.")
         return 1
+    assert harvest is not None  # a None harvest has no bags, handled above
 
     missing = validator.missing_user_fields(context)
     if missing:
@@ -101,6 +102,9 @@ def run(args, console: Console | None = None) -> int:
                 context.setdefault(section, {})[field] = value
         fsio.atomic_write_json(paths.mission_context_path(), context)
 
+    # missing_user_fields(None) always reports all required fields, so a None
+    # context above is always replaced before reaching here.
+    assert context is not None
     existing_notes = (context.get("intent") or {}).get("notes")
     note_arg = getattr(args, "note", None)
     if note_arg is not None:

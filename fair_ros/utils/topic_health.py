@@ -219,11 +219,12 @@ def analyse_bag(bag_dir: Path, sensors: list[dict] | None = None) -> list[dict]:
     bag_end = bag_start + meta["duration_s"]
     for topic, stamps in _topic_timestamps(
             bag_dir, meta["relative_file_paths"]).items():
-        sensor = by_topic.get(topic)
-        gaps = _gap_warnings(topic, sensor, stamps, bag_start, bag_end)
+        topic_sensor = by_topic.get(topic)
+        gaps = _gap_warnings(topic, topic_sensor, stamps, bag_start, bag_end)
         warnings.extend(gaps)
         if not gaps:
-            low = _low_rate_warning(topic, sensor, stamps, meta["duration_s"])
+            low = _low_rate_warning(topic, topic_sensor, stamps,
+                                    meta["duration_s"])
             if low:
                 warnings.append(low)
     return warnings

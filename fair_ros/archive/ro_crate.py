@@ -154,7 +154,7 @@ def build(record: MissionRecord, extra_files: list[dict] | None = None,
         props.append(_pv(f"#sensor-{sid}-detected_at_start",
                          "detected_at_start",
                          str(sensor.detected_at_start).lower()))
-        entity: dict = {
+        sensor_entity: dict = {
             "@id": f"#sensor-{sid}",
             "@type": "sosa:Sensor",
             "name": sensor.make_model,
@@ -164,8 +164,8 @@ def build(record: MissionRecord, extra_files: list[dict] | None = None,
         }
         archived = cal_paths.get(sensor.calibration_ref or "")
         if archived:
-            entity["subjectOf"] = {"@id": archived}
-        graph.append(entity)
+            sensor_entity["subjectOf"] = {"@id": archived}
+        graph.append(sensor_entity)
 
     instruments = []
     if record.robot:

@@ -14,6 +14,7 @@ import subprocess
 import sys
 from importlib.metadata import Distribution, distributions
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger("fair_ros.harvest.python_env")
 
@@ -103,17 +104,17 @@ def harvest() -> dict:
 
 
 def _harvest() -> dict:
-    packages = []
+    packages: list[dict[str, Any]] = []
     fair_ros_editable = False
 
     for dist in sorted(distributions(),
-                       key=lambda d: (d.metadata.get("Name") or "").lower()):
-        name = dist.metadata.get("Name") or ""
-        version = dist.metadata.get("Version") or ""
+                       key=lambda d: (d.name or "").lower()):
+        name = dist.name or ""
+        version = dist.version or ""
         if not name:
             continue
         editable, location = _editable_location(dist)
-        pkg = {
+        pkg: dict[str, Any] = {
             "name": name,
             "version": version,
             "installer": _installer(dist),

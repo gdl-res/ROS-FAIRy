@@ -17,7 +17,11 @@ import fair_ros.harvest.python_env as pe
 def _fake_dist(name: str, version: str, installer: str | None = "pip",
                direct_url: dict | None = None) -> MagicMock:
     dist = MagicMock()
+    # Mirror importlib.metadata.Distribution: .name/.version are properties
+    # backed by the metadata mapping. The harvest reads the properties.
     dist.metadata = {"Name": name, "Version": version}
+    dist.name = name
+    dist.version = version
 
     def read_text(fname):
         if fname == "INSTALLER":
