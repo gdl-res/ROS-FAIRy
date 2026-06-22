@@ -63,7 +63,7 @@ Each saved mission is a self-contained directory:
 ├── ro-crate-metadata.json     # JSON-LD (RO-Crate 1.1 + schema.org + SSN/SOSA)
 ├── mission_record.json        # full structured record (machine-readable)
 ├── README.md                  # plain-language summary
-├── bags/                      # rosbag2 recordings (moved, not copied)
+├── bags/                      # rosbag2 recordings (moved, not copied; per-file sha256 recorded)
 ├── harvest/
 │   ├── harvest.json           # raw harvest data
 │   ├── robot_description.urdf
