@@ -21,3 +21,9 @@ exclude = ["build", "dist", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Live-ROS smoke tests are deselected by default so the no-ROS suite (and CI)
+# stays clean. Run them on a sourced ROS 2 box with: pytest -m ros
+addopts = ["-m", "not ros"]
+markers = [
+    "ros: integration test requiring a live, sourced ROS 2 environment (deselected by default; run with `pytest -m ros`). See docs/real-robot-smoke-test.md.",
+]

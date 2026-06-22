@@ -94,6 +94,10 @@ ruff check .                    # lint (enforced in CI)
 mypy fair_ros                   # type check (enforced in CI)
 ```
 
+Optional live-ROS smoke tests (deselected by default) validate plugin
+registration and the real harvest/record/verify pipeline on a sourced ROS 2
+box: `pytest -m ros -v` — see [docs/real-robot-smoke-test.md](docs/real-robot-smoke-test.md).
+
 Requires Python ≥ 3.10, pydantic ≥ 2.5, rich ≥ 13, PyYAML, inotify_simple.
 The `mcap` package is an optional extra (in `[test]`/`[dev]`) that enables
 timestamp-level health analysis of MCAP bags; without it, MCAP bags get

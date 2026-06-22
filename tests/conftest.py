@@ -1,8 +1,33 @@
+import os
+import shutil
 import sqlite3
 import textwrap
 from pathlib import Path
 
 import pytest
+
+
+def _ros_available() -> bool:
+    """A sourced ROS 2 environment: ros2 on PATH and $ROS_DISTRO set."""
+    return shutil.which("ros2") is not None and bool(os.environ.get("ROS_DISTRO"))
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip `ros`-marked tests when ROS isn't sourced.
+
+    They are deselected by default (pyproject `addopts = -m "not ros"`); this
+    only fires when a user explicitly runs `pytest -m ros` on a box without a
+    sourced ROS 2 environment, so they skip with a clear reason instead of
+    failing.
+    """
+    if _ros_available():
+        return
+    skip = pytest.mark.skip(
+        reason="requires a sourced ROS 2 environment (ros2 on PATH + "
+               "$ROS_DISTRO); see docs/real-robot-smoke-test.md")
+    for item in items:
+        if "ros" in item.keywords:
+            item.add_marker(skip)
 
 
 @pytest.fixture
