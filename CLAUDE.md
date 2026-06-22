@@ -262,9 +262,20 @@ Subcommands register under:
 
 - Unit tests for all `harvest/` and `manifest/` modules with mocked subprocess
   output and fixture files
-- Integration tests spin a minimal ROS 2 environment (rosbag play on a test bag)
+- Integration tests drive the full mission lifecycle (watchdog → briefing →
+  close → archive → list) against synthetic bags, plus an optional real-bag
+  harness (`tests/integration/test_real_bags.py`) that validates parsing,
+  health, and crate assembly against real `ros2 bag record` output dropped into
+  `tests/fixtures/` (skips when none are present)
 - The watchdog is tested with a mock inotify event injector
-- No test should require a physical robot or live ROS graph
+- The **default suite requires no physical robot or live ROS graph** and is the
+  only thing CI runs. An opt-in live-ROS smoke layer
+  (`tests/integration/test_ros_smoke.py`, marked `@pytest.mark.ros`) validates
+  what mocks cannot — plugin registration, live graph harvest, the rclpy
+  `/robot_description` capture, and a full record→harvest→archive→verify against
+  a real bag. It is **deselected by default** (`pyproject` `addopts = -m "not
+  ros"`); run it on a sourced ROS 2 box with `pytest -m ros` (see
+  `docs/real-robot-smoke-test.md`)
 
 ---
 
