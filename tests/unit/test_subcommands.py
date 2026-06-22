@@ -16,7 +16,7 @@ from fair_ros.subcommands import (
     mission_status,
 )
 from fair_ros.subcommands import setup as setup_cmd
-from fair_ros.utils import fsio, paths
+from fair_ros.utils import clock, fsio, paths
 from tests.unit.test_archive import _spool
 
 
@@ -61,6 +61,33 @@ def test_mission_record_requires_ros2(fair_dirs):
                            return_value=None):
         assert mission_record.run(ARGS, console=console) == 1
     assert "can't find ROS 2" in console.file.getvalue()
+
+
+def test_clock_is_synchronized_parsing():
+    def result(val):
+        return SimpleNamespace(returncode=0, stdout=val + "\n")
+    with mock.patch.object(clock.subprocess, "run", return_value=result("yes")):
+        assert clock.is_synchronized() is True
+    with mock.patch.object(clock.subprocess, "run", return_value=result("no")):
+        assert clock.is_synchronized() is False
+    with mock.patch.object(clock.subprocess, "run",
+                           side_effect=FileNotFoundError):
+        assert clock.is_synchronized() is None
+
+
+def test_mission_record_aborts_on_unsynced_clock(fair_dirs):
+    _spool(fair_dirs)  # a mission context, so the briefing prompt is skipped
+    console = _console()
+    with mock.patch.object(mission_record.shutil, "which",
+                           return_value="/usr/bin/ros2"), \
+         mock.patch.object(mission_record.clock, "is_synchronized",
+                           return_value=False), \
+         mock.patch.object(mission_record.Confirm, "ask",
+                           return_value=False) as ask, \
+         mock.patch.object(mission_record.subprocess, "Popen") as popen:
+        assert mission_record.run(ARGS, console=console) == 0
+    ask.assert_called_once()          # the clock prompt
+    popen.assert_not_called()         # recording never started
 
 
 def test_build_record_command_default(fair_dirs):

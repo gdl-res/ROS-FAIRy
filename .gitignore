@@ -24,6 +24,8 @@ env/
 
 # Real-robot test artifacts (large; kept out of the repo)
 fair_out_*.zip
+afternoon_*.zip
+*_2026-*.zip
 ros_test_out.txt
 
 # Editor / OS

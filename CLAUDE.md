@@ -96,7 +96,10 @@ fair-ros/
 │       ├── fsio.py                  ← atomic JSON writes, directory sizing
 │       ├── bag_storage.py           ← pluggable rosbag2 storage readers (sqlite3 + mcap)
 │       ├── ros_distro.py            ← distro detection + per-distro capabilities (default storage)
-│       └── topic_health.py          ← gap detection on topic timestamps
+│       ├── clock.py                 ← system clock NTP-sync check (pre-record guardrail)
+│       └── topic_health.py          ← gap detection + recording-window recovery
+├── tools/
+│   └── restamp_bag.py               ← recover an unplayable bag from an unsynced-clock recording
 ├── systemd/
 │   └── fair-ros-watchdog.service
 ├── tests/

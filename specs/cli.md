@@ -64,6 +64,8 @@ Preflight:
 - Existing `mission_context.json` in spool → "There's already an unfinished
   mission from <date> by <operator>. Start a new one and replace it? [y/N]".
   No = exit 0 untouched.
+- System clock not NTP-synchronised → print a non-blocking warning (the
+  briefing doesn't record, so it never prompts; `mission_record` enforces it).
 
 Questions (exactly these five, in this order):
 
@@ -94,6 +96,12 @@ Preflight:
   mission. Continue? [Y/n]".
 - Watchdog not active → warn (recording still proceeds; context can be
   harvested late by the retry rule, but the warning is honest about it).
+- System clock not NTP-synchronised (`utils/clock.is_synchronized()` is
+  `False`) → warn and require explicit confirm. An unsynced clock stamps
+  messages near the epoch, producing bags that `ros2 bag play` can't replay and
+  that are useless for time-critical processing; better to catch it before
+  recording than to flag the dead bag afterwards. Unknown sync state (no
+  `timedatectl`) does not nag.
 
 Subprocess (exact):
 

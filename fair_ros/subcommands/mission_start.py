@@ -9,7 +9,7 @@ from rich.prompt import Confirm
 from fair_ros.manifest import builder
 from fair_ros.subcommands import VerbExtension, _configure_logging
 from fair_ros.ui import briefing
-from fair_ros.utils import fsio, paths
+from fair_ros.utils import clock, fsio, paths
 from fair_ros.watchdog import watchdog as wd
 
 
@@ -37,6 +37,9 @@ def run(args, console: Console | None = None) -> int:
     if not _watchdog_alive():
         console.print("[yellow]Background recording assistant isn't running "
                       "— your answers will still be saved.[/yellow]")
+
+    if clock.is_synchronized() is False:
+        console.print(f"[yellow]{clock.WARNING}[/yellow]")
 
     context_path = paths.mission_context_path()
     if context_path.is_file():
