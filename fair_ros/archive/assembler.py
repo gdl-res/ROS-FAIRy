@@ -7,7 +7,6 @@ either doesn't exist or is complete.
 """
 
 import errno
-import hashlib
 import json
 import re
 import shutil
@@ -42,14 +41,6 @@ def archive_name(record: MissionRecord) -> str:
         n += 1
         name = f"{base}_{n}"
     return name
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _move_bag(src: Path, dest: Path,
@@ -224,7 +215,7 @@ def assemble(record: MissionRecord, harvest_doc: dict[str, Any],
             dest = cal_dir / source.name
             shutil.copy2(source, dest)
             cal.archived_path = f"calibrations/{source.name}"
-            cal.sha256 = _sha256(dest)
+            cal.sha256 = fsio.sha256_file(dest)
 
         raw_inspect = harvest_doc.get("raw_docker_inspect") or []
         if raw_inspect:

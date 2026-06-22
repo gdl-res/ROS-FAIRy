@@ -4,6 +4,7 @@ harvest.json and watchdog.state must never be observable in a torn state
 (specs/watchdog.md): write to a sibling temp file, fsync, rename.
 """
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -25,3 +26,12 @@ def atomic_write_json(path: Path, document: Any) -> None:
 
 def dir_size_bytes(path: Path) -> int:
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+def sha256_file(path: Path) -> str:
+    """Streaming SHA-256 hex digest of a file (constant memory)."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()

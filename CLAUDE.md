@@ -65,6 +65,7 @@ fair-ros/
 │   │   ├── mission_close.py
 │   │   ├── mission_status.py
 │   │   ├── mission_diff.py          ← compare two missions (ros2 fair diff)
+│   │   ├── verify.py                ← integrity-check a saved archive (ros2 fair verify)
 │   │   └── list_missions.py
 │   ├── harvest/                     ← auto-discovery subsystem
 │   │   ├── ros_graph.py             ← nodes, topics, params via subprocess
@@ -196,7 +197,10 @@ Every field carries a `confidence` tag: `"auto"` or `"user"`.
 - `mission_status.py` — shows current watchdog state, spool size, active bags
 - `list_missions.py` — queries SQLite index, shows table of past missions
 - `mission_diff.py` — compares two missions and shows only what changed
-  (`mission_status`, `list`, and `diff` accept `--json` for machine output)
+- `verify.py` — re-checks a saved archive (schema, RO-Crate JSON-LD, referenced
+  files present, bag data files present, calibration checksums, index entry);
+  read-only, plain-language PASS/FAIL
+  (`mission_status`, `list`, `diff`, and `verify` accept `--json` for scripts)
 
 ### Manifest Builder (`manifest/`)
 - `builder.py` merges `harvest.json` + `mission_context.json` → `MissionRecord`
@@ -236,6 +240,7 @@ Subcommands register under:
         'mission_status = fair_ros.subcommands.mission_status:MissionStatusVerb',
         'list = fair_ros.subcommands.list_missions:ListVerb',
         'diff = fair_ros.subcommands.mission_diff:DiffVerb',
+        'verify = fair_ros.subcommands.verify:VerifyVerb',
     ],
 ```
 

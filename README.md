@@ -26,10 +26,12 @@ ros2 fair mission_close    # review summary, then save or discard
 ros2 fair mission_status   # what is the assistant doing right now?
 ros2 fair list             # table of saved missions
 ros2 fair diff [A] [B]     # compare two missions, show only what changed
+ros2 fair verify [M]       # check a saved archive is complete and unmodified
 ```
 
 All verbs accept `--debug` for verbose logging to stderr. `mission_status`,
-`list`, and `diff` accept `--json` for machine-readable output (for scripts).
+`list`, `diff`, and `verify` accept `--json` for machine-readable output (for
+scripts).
 
 `mission_close` accepts `--note TEXT` to attach post-mission notes without
 an interactive prompt.

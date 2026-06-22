@@ -1,68 +1,13 @@
 """ros2 fair diff — compare two saved missions."""
 
 import json
-from pathlib import Path
 
 from rich.console import Console
 
-from fair_ros.archive import index
-from fair_ros.manifest.schema import MissionRecord
+from fair_ros.archive import locate
 from fair_ros.subcommands import VerbExtension, _configure_logging
 from fair_ros.ui import diff as diff_ui
 from fair_ros.utils import paths
-
-
-class DiffError(Exception):
-    pass
-
-
-def _resolve(identifier: str) -> Path:
-    """Map a user-supplied identifier to an archive directory.
-
-    Accepts (in order of precedence):
-      - a positive integer  →  Nth most recent mission (1 = newest)
-      - a filesystem path   →  must contain mission_record.json
-      - a mission ID string →  looked up in the index
-    """
-    try:
-        n = int(identifier)
-        if n < 1:
-            raise DiffError(f"Mission number must be 1 or higher (got {n}).")
-        rows, total = index.query(limit=n)
-        if n > len(rows):
-            raise DiffError(
-                f"There {'is' if total == 1 else 'are'} only {total} saved "
-                f"mission{'s' if total != 1 else ''}; {n} is out of range.")
-        return Path(rows[n - 1]["archive_path"])
-    except ValueError:
-        pass
-
-    p = Path(identifier)
-    if p.is_dir() and (p / "mission_record.json").is_file():
-        return p
-
-    rows, _ = index.query(limit=10_000)
-    for row in rows:
-        if row["mission_id"] == identifier:
-            return Path(row["archive_path"])
-
-    raise DiffError(
-        f"Can't find a mission matching '{identifier}'. "
-        "Use a number (1 = most recent), an archive path, or a mission ID "
-        "(e.g. m-20260612-140258-9f3a).")
-
-
-def _load(path: Path) -> MissionRecord:
-    record_file = path / "mission_record.json"
-    if not record_file.is_file():
-        raise DiffError(
-            f"{path} doesn't look like a mission archive "
-            "(no mission_record.json found).")
-    try:
-        return MissionRecord.model_validate(
-            json.loads(record_file.read_text()))
-    except Exception as exc:
-        raise DiffError(f"Could not read mission record at {path}: {exc}") from exc
 
 
 def run(args, console: Console | None = None) -> int:
@@ -85,9 +30,9 @@ def run(args, console: Console | None = None) -> int:
     assert a_id is not None and b_id is not None  # both set or returned above
 
     try:
-        record_a = _load(_resolve(a_id))
-        record_b = _load(_resolve(b_id))
-    except DiffError as exc:
+        record_a = locate.load_record(locate.resolve_archive(a_id))
+        record_b = locate.load_record(locate.resolve_archive(b_id))
+    except locate.LocateError as exc:
         console.print(f"[red]{exc}[/red]")
         return 1
 

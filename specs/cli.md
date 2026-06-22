@@ -229,3 +229,35 @@ Options:
 
 Index file missing, an out-of-range number, or an unresolvable identifier each
 produce a plain-language error and exit 1.
+
+## `ros2 fair verify [<mission>]`
+
+Re-checks that a saved mission archive is complete and unmodified — the question
+a data consumer has months later. Read-only: it never touches the archive or the
+index. The argument identifies a mission the same way `diff` does (number,
+archive path, or mission ID); with no argument it verifies the most recent
+mission.
+
+Runs these checks and renders each as a plain-language ✓/!/✗ line in a single
+panel:
+
+| Check | Status on problem |
+|---|---|
+| `mission_record.json` loads and validates against the schema | ✗ fail (stops here) |
+| `ro-crate-metadata.json` is valid JSON-LD (deep-loaded with `rocrate` if installed) | ✗ fail (! if `rocrate` absent — JSON-only) |
+| `README.md`, `harvest/harvest.json` present | ! warn |
+| each bag directory has its `metadata.yaml` and every storage file it lists | ✗ fail |
+| each calibration file still matches the `sha256` recorded at archive time | ✗ fail |
+| every `File` entity referenced by the crate exists on disk | ✗ fail |
+| the mission is registered in the SQLite index at this path | ! warn (`reindex()` can fix) |
+
+Overall result: **PASS** (all ✓), **PASS (with notes)** (some ! but no ✗), or
+**FAIL** (any ✗). Exit code is `0` unless any check failed, then `1`.
+
+Options:
+- `--json` — emits `{"archive": <path>, "result": "ok|warn|fail", "checks":
+  [{"status", "title", "detail"}, …]}` to stdout.
+
+Bag *contents* are not checksummed (bags are moved verbatim at archive time, not
+hashed), so verify confirms bag **structure** — directory, metadata, and listed
+storage files present — not byte-level bag integrity.
