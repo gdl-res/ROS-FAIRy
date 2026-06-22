@@ -150,8 +150,14 @@ the operator's ROS environment (variables prefixed `ROS_`/`AMENT_`/`RMW_`/
 `COLCON_`, plus `PATH`, `LD_LIBRARY_PATH`, `PYTHONPATH`, `CMAKE_PREFIX_PATH`,
 and the DDS profile vars) into `/etc/fair-ros/watchdog.env`, which the unit
 loads via `EnvironmentFile=-` (optional, so a robot set up before this existed
-still starts and watches the spool). The operator must run setup with that
-environment preserved (e.g. `sudo -E ros2 fair setup`); setup warns if
+still starts and watches the spool). Setup snapshots whatever environment it
+runs under, so it must run from a shell that has ROS sourced **and can see the
+robot** (`ros2 node list` lists its nodes — this also confirms the service, run
+as root with the same env, will reach the graph). Because `sudo` typically
+resets `PATH`/strips `ROS_*` (and `sudo -E` is often blocked by `secure_path`),
+the reliable recipe is to become root and source ROS there:
+`sudo su` → `source /opt/ros/<distro>/setup.bash` (+ the overlay/env that sets
+`ROS_DOMAIN_ID`/`RMW_IMPLEMENTATION`) → `ros2 fair setup`. Setup warns if
 `ROS_DISTRO` is absent. Re-run setup to refresh the snapshot after a distro or
 DDS change.
 

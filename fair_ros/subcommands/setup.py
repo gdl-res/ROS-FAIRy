@@ -226,9 +226,15 @@ def write_watchdog_env(console: Console) -> None:
         console.print(
             "[yellow]Warning: no ROS environment was captured for the "
             "background service (ROS_DISTRO is unset). The watchdog won't be "
-            "able to record software versions or the robot description.\n"
-            "Re-run setup with your ROS environment preserved, e.g. "
-            "`sudo -E env \"PATH=$PATH\" ros2 fair setup`.[/yellow]")
+            "able to record software versions, the ROS graph, or the robot "
+            "description.\n"
+            "Fix: run setup from a root shell that has ROS sourced and can see "
+            "the robot:\n"
+            "    sudo su\n"
+            "    source /opt/ros/<distro>/setup.bash   # + the overlay/env that "
+            "sets ROS_DOMAIN_ID, RMW_IMPLEMENTATION\n"
+            "    ros2 node list   # must list your robot's nodes\n"
+            "    ros2 fair setup[/yellow]")
 
 
 def install_service(console: Console) -> bool:
@@ -259,8 +265,15 @@ def run(args, console: Console | None = None) -> int:
                       "and writes /etc). Re-run with sudo.[/red]")
         return 1
     if shutil.which("ros2") is None:
-        console.print("[red]ros2 is not on PATH. Source your ROS 2 "
-                      "environment first.[/red]")
+        console.print(
+            "[red]ros2 is not on PATH. The watchdog snapshots this shell's ROS "
+            "environment, so it must be sourced when you run setup.\n"
+            "If you become root with `sudo su` (or `sudo -E` is blocked by "
+            "your sudoers), source ROS in the root shell first:\n"
+            "    source /opt/ros/<distro>/setup.bash   # + the overlay/env that "
+            "sets ROS_DOMAIN_ID, RMW_IMPLEMENTATION\n"
+            "    ros2 node list   # must list your robot's nodes\n"
+            "    ros2 fair setup[/red]")
         return 1
     if shutil.which("docker") is None:
         console.print("[yellow]Docker not found — container snapshots will "
