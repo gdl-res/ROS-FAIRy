@@ -152,7 +152,7 @@ MissionRecord
 ├── software          # ROS 2 distro, package versions, docker digests
 ├── ros_graph         # nodes, topics, params snapshot at mission start
 ├── calibrations[]    # paths to cal files linked from robot_identity.yaml
-├── bags[]            # paths, sizes, duration, topic health report
+├── bags[]            # paths, sizes, duration, topic health, per-file sha256 (at archive time)
 ├── hardware_devices[] # USB/PCI/video/serial devices discovered at mission start
 └── provenance        # fair-ros version, harvest timestamp, confidence tags
 ```
