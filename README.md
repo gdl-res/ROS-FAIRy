@@ -75,6 +75,31 @@ Each saved mission is a self-contained directory:
 └── docker/                    # container inventory + Compose snapshots
 ```
 
+## Roadmap
+
+**Working today**
+- Dashcam watchdog → briefing → save/discard → RO-Crate archive → SQLite index
+- Automatic harvest: robot identity, ROS graph, software versions, Docker
+  digests, Python environment, connected hardware, robot description
+- Bag health (gaps, low-rate, never-published) on **both sqlite3 and MCAP**
+  storage, with distro-aware defaults and pluggable storage readers
+- `ros2 fair verify` — schema, RO-Crate JSON-LD, referenced files,
+  **per-file bag checksums + calibration checksums**, and index registration
+- CI gate: ruff + mypy + pytest across Python 3.10–3.13
+
+**Ready, needs a real robot to exercise**
+- Real-bag fixtures — drop bags from `ros2 bag record` into `tests/fixtures/`
+  to validate the core against real Jazzy metadata
+  ([how](tests/fixtures/README.md))
+- Live-ROS smoke tests — `pytest -m ros` on a sourced Jazzy box validates
+  plugin registration and the full live pipeline
+  ([how](docs/real-robot-smoke-test.md))
+
+**Out of scope (v1)**
+- Cloud sync / remote registry, web UI, multi-robot session tracking
+- Automatic environment data from external APIs (weather, map tiles)
+- Migration tooling for ROS 2 distros other than Jazzy
+
 ## Documentation
 
 - `CLAUDE.md` — project constitution: design principles, layout, implementation rules
