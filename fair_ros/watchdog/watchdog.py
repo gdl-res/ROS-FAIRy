@@ -191,7 +191,9 @@ class Watchdog:
         mask, name = event.mask, event.name
         if event.wd == self._w1:
             if mask & flags.ISDIR and mask & (flags.CREATE | flags.MOVED_TO):
-                self._watch_candidate(paths.bags_dir() / name)
+                new_dir = paths.bags_dir() / name
+                self._watch_candidate(new_dir)
+                self._promote_candidate(new_dir)
             return
 
         bag_dir = self._wd_dirs.get(event.wd)
@@ -238,6 +240,32 @@ class Watchdog:
             return
         self._wd_dirs[wd] = bag_dir
         self._candidate_dirs.add(bag_dir)
+
+    def _promote_candidate(self, bag_dir: Path) -> None:
+        """Catch a storage file that already existed when we armed the watch.
+
+        inotify only reports events that happen *after* ``add_watch``, so a
+        bag whose first chunk lands in the race window between the directory
+        appearing and W2 being armed (or a finished bag dir moved into the
+        spool) would otherwise never trigger RECORDING and never be harvested.
+        Scan once on arm and apply the same IDLE→enter / RECORDING→queue logic
+        the live CREATE event would have.
+        """
+        try:
+            has_storage = any(_is_storage_file(f.name)
+                              for f in bag_dir.iterdir())
+        except OSError:
+            return
+        if not has_storage:
+            return
+        if self.state == IDLE and bag_dir in self._candidate_dirs:
+            log.info("storage already present in %s when armed", bag_dir)
+            self._enter_recording(bag_dir)
+        elif self.state == RECORDING and bag_dir != self.active_bag_dir \
+                and bag_dir not in self.queued_bags:
+            log.warning("second bag %s already had data when seen; queued",
+                        bag_dir)
+            self.queued_bags.append(bag_dir)
 
     def _enter_recording(self, bag_dir: Path) -> None:
         if bag_dir not in self._wd_dirs.values():

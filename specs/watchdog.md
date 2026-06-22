@@ -22,6 +22,17 @@ W2 is added when W1 fires and removed when the bag is finalised. If
 `/var/fair-ros/spool/bags/` does not exist at startup, the watchdog creates it
 (mode `0775`).
 
+**Arm-time scan (inotify race).** inotify only delivers events that occur
+*after* `add_watch`. A bag whose first storage file is created in the window
+between the directory appearing (W1) and W2 being armed — or a finished bag
+directory moved into the spool with its chunks already present — would never
+produce a storage-file CREATE on W2 and so would be missed (no RECORDING, no
+context harvest). Therefore, immediately after arming W2 on a new directory,
+the watchdog scans it once for an existing storage file and applies the same
+transition the live CREATE would have (IDLE → RECORDING, or queue while
+RECORDING). This makes detection robust to the race during normal operation,
+mirroring the startup recovery scan below.
+
 Library: `inotify_simple` (single dependency, no callback framework — we run our
 own select loop so we can also service timers).
 
