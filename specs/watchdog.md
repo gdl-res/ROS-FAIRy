@@ -114,9 +114,10 @@ Trigger, whichever comes first:
    Metadata-level checks (`never_published`) run for any storage format.
    Timestamp-level checks (`gap`, `low_rate`) need per-message receive times,
    which are read through `utils/bag_storage.py`'s pluggable reader registry:
-   `sqlite3` is implemented; `mcap` (Jazzy's default) is a declared extension
-   point and currently yields metadata-level checks only. Callers never branch
-   on storage format — they consult `bag_storage.get_reader(storage_id)`.
+   `sqlite3` (stdlib) and `mcap` (Jazzy's default, via the optional `mcap`
+   package) are both implemented. If `mcap` is not installed those bags fall
+   back to metadata-level checks. Callers never branch on storage format —
+   they consult `bag_storage.get_reader(storage_id)`.
 3. Append the `Bag` record to `harvest.json.bags[]` (atomic rewrite).
 4. Set `provenance.harvested_at`, remove W2, update `watchdog.state`, go IDLE.
 

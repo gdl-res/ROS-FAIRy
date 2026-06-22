@@ -8,22 +8,27 @@ them in chunked binary records. This module hides that behind a single reader
 interface so callers (``utils/topic_health``) never branch on format.
 
 Status:
-  - ``sqlite3`` (``.db3``): implemented.
-  - ``mcap`` (``.mcap``): declared extension point. Jazzy's *default* rosbag2
-    storage is MCAP, so giving ``McapReader.topic_timestamps`` a real body
-    immediately enables gap detection on stock Jazzy bags with no change to
-    any caller.
+  - ``sqlite3`` (``.db3``): implemented, stdlib only.
+  - ``mcap`` (``.mcap``, Jazzy's default): implemented via the optional
+    ``mcap`` package. When that package is absent ``McapReader.supported`` is
+    False and callers transparently fall back to metadata-level checks.
 
 Adding a backend: implement a reader with ``storage_id``, ``supported = True``,
 and ``topic_timestamps``, then register an instance in ``_READERS``.
 """
 
+import importlib.util
 import logging
 import sqlite3
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 log = logging.getLogger("fair_ros.utils.bag_storage")
+
+
+def _mcap_available() -> bool:
+    """True if the optional ``mcap`` package is importable."""
+    return importlib.util.find_spec("mcap") is not None
 
 
 class BagStorageUnsupported(Exception):
@@ -77,25 +82,50 @@ class SqliteReader:
 
 
 class McapReader:
-    """Extension point: MCAP per-message timestamp reading (not yet built).
+    """rosbag2 MCAP storage (Jazzy's default).
 
-    Jazzy records MCAP by default. To implement, read each ``.mcap`` file's
-    message records and group ``log_time`` (nanoseconds) by channel/topic,
-    mirroring ``SqliteReader``'s return shape. Suggested approach: the optional
-    ``mcap`` package, imported locally so the core stays dependency-light, and
-    raise ``BagStorageUnsupported`` if it is not installed. Once this returns
-    real data, set ``supported = True`` and gap detection works on Jazzy's
-    default storage with no caller changes.
+    Reads each ``.mcap`` file's message records and groups ``log_time``
+    (the receive timestamp rosbag2 records, in nanoseconds) by channel/topic,
+    mirroring ``SqliteReader``. Only record headers are read — messages are not
+    deserialised — so no message-type packages are needed, just ``mcap`` for
+    the container format. ``mcap`` is an optional dependency: when it is absent
+    ``supported`` is False and callers fall back to metadata-level checks; if a
+    caller invokes this anyway, ``BagStorageUnsupported`` is raised.
     """
 
     storage_id = "mcap"
-    supported = False
+    supported = _mcap_available()
 
     def topic_timestamps(self, bag_dir: Path,
                          rel_paths: list[str]) -> dict[str, list[float]]:
-        raise BagStorageUnsupported(
-            "MCAP per-message timestamp reading is not implemented yet; "
-            "metadata-level health checks still apply.")
+        try:
+            from mcap.reader import make_reader
+        except ImportError as exc:  # pragma: no cover - exercised without mcap
+            raise BagStorageUnsupported(
+                "the 'mcap' package is required to analyse MCAP bags") from exc
+
+        series: dict[str, list[float]] = {}
+        mcap_files = [bag_dir / p for p in rel_paths
+                      if str(p).endswith(".mcap")]
+        if not mcap_files:
+            mcap_files = sorted(bag_dir.glob("*.mcap"))
+        for mcap_file in mcap_files:
+            if not mcap_file.is_file():
+                continue
+            try:
+                with open(mcap_file, "rb") as handle:
+                    for _schema, channel, message in \
+                            make_reader(handle).iter_messages():
+                        series.setdefault(channel.topic, []).append(
+                            message.log_time / 1e9)
+            except Exception:
+                # A truncated/corrupt .mcap (e.g. crash mid-write) must not
+                # break health analysis; salvage what the other files yield.
+                log.warning("could not read mcap file %s", mcap_file)
+                continue
+        for stamps in series.values():
+            stamps.sort()
+        return series
 
 
 _READERS: dict[str, BagStorageReader] = {

@@ -47,7 +47,7 @@ Every time a recording starts, the watchdog harvests:
 | ROS graph | Node list, topic list with types, parameter dump, sensor liveness check |
 | Docker containers | Image references, digests, Compose file snapshots |
 | Robot description | URDF from `/robot_description`, TF static transforms |
-| Bag health | Per-topic gap detection, low-rate warnings, plain-language summaries |
+| Bag health | Per-topic gap detection, low-rate warnings, plain-language summaries (sqlite3 and MCAP bags) |
 
 All harvest steps are read-only, non-invasive, and timeout-safe. Missing
 commands (e.g. no `lsusb`) produce partial results, never failures.
@@ -93,5 +93,8 @@ mypy fair_ros                   # type check (enforced in CI)
 ```
 
 Requires Python ≥ 3.10, pydantic ≥ 2.5, rich ≥ 13, PyYAML, inotify_simple.
+The `mcap` package is an optional extra (in `[test]`/`[dev]`) that enables
+timestamp-level health analysis of MCAP bags; without it, MCAP bags get
+metadata-level checks only.
 
 Licensed under the [Apache License 2.0](LICENSE).

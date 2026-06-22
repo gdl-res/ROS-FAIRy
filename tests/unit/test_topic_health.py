@@ -1,5 +1,11 @@
+import importlib.util
+
+import pytest
+
 from fair_ros.utils import topic_health
-from tests.conftest import make_bag
+from tests.conftest import make_bag, make_mcap_bag
+
+_MCAP_PRESENT = importlib.util.find_spec("mcap") is not None
 
 SENSORS = [
     {"sensor_id": "gps0", "type": "gps", "make_model": "u-blox ZED-F9P",
@@ -112,6 +118,20 @@ def test_mcap_bag_metadata_checks_only(tmp_path):
         "/depth": _steady(T0, T0 + 100, 5),
     }, storage="mcap")
     assert topic_health.analyse_bag(bag, SENSORS) == []
+
+
+@pytest.mark.skipif(not _MCAP_PRESENT, reason="mcap package not installed")
+def test_mcap_bag_gap_detection_end_to_end(tmp_path):
+    """With the mcap reader available, gap detection works on MCAP bags —
+    the Jazzy-default case that previously produced no timestamp warnings."""
+    bag = make_mcap_bag(tmp_path / "bag", {
+        "/fix": [T0, T0 + 1, T0 + 2, T0 + 30, T0 + 31],  # ~28 s GPS dropout
+        "/depth": _steady(T0, T0 + 31, 5),
+    })
+    warnings = topic_health.analyse_bag(bag, SENSORS)
+    gaps = [w for w in warnings if w["kind"] == "gap"]
+    assert any(w["topic"] == "/fix" for w in gaps)
+    assert any("GPS" in w["plain_text"] for w in gaps)
 
 
 def test_metadata_without_storage_id_infers_from_distro(tmp_path, monkeypatch):

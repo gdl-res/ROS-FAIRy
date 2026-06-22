@@ -24,8 +24,10 @@ setup(
         "inotify_simple>=1.3",
     ],
     extras_require={
-        "test": ["pytest", "rocrate"],
-        "dev": ["pytest", "rocrate", "ruff", "mypy"],
+        # mcap enables MCAP bag health analysis (and lets tests write/read
+        # real .mcap fixtures). Optional at runtime; degrades gracefully.
+        "test": ["pytest", "rocrate", "mcap"],
+        "dev": ["pytest", "rocrate", "mcap", "ruff", "mypy"],
     },
     zip_safe=False,
     author="fair-ros contributors",
