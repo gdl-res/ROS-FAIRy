@@ -246,7 +246,7 @@ panel:
 | `mission_record.json` loads and validates against the schema | ✗ fail (stops here) |
 | `ro-crate-metadata.json` is valid JSON-LD (deep-loaded with `rocrate` if installed) | ✗ fail (! if `rocrate` absent — JSON-only) |
 | `README.md`, `harvest/harvest.json` present | ! warn |
-| each bag directory has its `metadata.yaml` and every storage file it lists | ✗ fail |
+| each bag file still matches its per-file `sha256` recorded at archive time (pre-1.0 archives without checksums fall back to a structural check — metadata + listed storage files present — reported `!`) | ✗ fail |
 | each calibration file still matches the `sha256` recorded at archive time | ✗ fail |
 | every `File` entity referenced by the crate exists on disk | ✗ fail |
 | the mission is registered in the SQLite index at this path | ! warn (`reindex()` can fix) |
@@ -258,6 +258,7 @@ Options:
 - `--json` — emits `{"archive": <path>, "result": "ok|warn|fail", "checks":
   [{"status", "title", "detail"}, …]}` to stdout.
 
-Bag *contents* are not checksummed (bags are moved verbatim at archive time, not
-hashed), so verify confirms bag **structure** — directory, metadata, and listed
-storage files present — not byte-level bag integrity.
+Bag bytes are pinned at archive time: the assembler records a sha256 for every
+file in each bag (`Bag.file_sha256`), so verify detects byte-level modification,
+not just missing files. Archives written before 1.0 have no bag checksums and
+fall back to the structural check (reported with a `!`).

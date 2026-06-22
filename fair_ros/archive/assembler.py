@@ -43,6 +43,14 @@ def archive_name(record: MissionRecord) -> str:
     return name
 
 
+def _bag_file_hashes(bag_dir: Path) -> dict[str, str]:
+    """Bag-relative file path -> sha256 for every file in the bag directory."""
+    return {
+        f.relative_to(bag_dir).as_posix(): fsio.sha256_file(f)
+        for f in sorted(bag_dir.rglob("*")) if f.is_file()
+    }
+
+
 def _move_bag(src: Path, dest: Path,
               progress: Callable[[str], None] | None) -> None:
     if progress:
@@ -245,9 +253,12 @@ def assemble(record: MissionRecord, harvest_doc: dict[str, Any],
                     "name": f"Compose file ({project})",
                     "encodingFormat": "application/yaml"})
 
-        # Crate-relative bag paths + assembly provenance, then manifests
-        for bag in record.bags:
-            bag.path = f"bags/{Path(bag.path).name}"
+        # Crate-relative bag paths + per-file checksums (the bag is moved
+        # verbatim, so hashing the spool copy pins the archived bytes) +
+        # assembly provenance, then manifests.
+        for bag, spool_bag in zip(record.bags, spool_bags, strict=True):
+            bag.file_sha256 = _bag_file_hashes(spool_bag)
+            bag.path = f"bags/{spool_bag.name}"
         record.provenance.assembled_at = datetime.now(timezone.utc)
 
         from fair_ros.manifest import builder

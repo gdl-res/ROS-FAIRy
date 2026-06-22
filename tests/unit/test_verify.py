@@ -7,7 +7,7 @@ from rich.console import Console
 from fair_ros.archive import assembler, index
 from fair_ros.manifest import builder
 from fair_ros.subcommands import verify
-from fair_ros.utils import paths
+from fair_ros.utils import fsio, paths
 from tests.unit.test_archive import _spool
 
 FAIL, WARN, OK = verify.FAIL, verify.WARN, verify.OK
@@ -35,8 +35,8 @@ def test_clean_archive_has_no_failures(fair_dirs):
     # the substantive checks are present
     titles = " ".join(c["title"] for c in checks)
     assert "Mission record is valid" in titles
-    assert "matches its checksum" in titles
-    assert "is complete" in titles
+    assert "Calibration gps0_cal matches its checksum" in titles
+    assert "matches its checksums" in titles  # the bag's per-file hashes
     assert "registered in the index" in titles
 
 
@@ -65,6 +65,43 @@ def test_detects_missing_bag_data_file(fair_dirs):
     db.unlink()
     checks = verify.verify_archive(crate)
     assert any(c["status"] == FAIL and "missing data files" in c["title"]
+               for c in checks)
+
+
+def test_assembled_bag_records_file_checksums(fair_dirs):
+    """The assembler pins every bag file with a sha256 matching the archived
+    bytes."""
+    harvest, context = _spool(fair_dirs)
+    record = builder.build(harvest, context)
+    crate = assembler.assemble(record, harvest)
+    bag = record.bags[0]
+    assert bag.file_sha256, "expected per-file checksums to be recorded"
+    bag_dir = crate / bag.path
+    for rel, expected in bag.file_sha256.items():
+        assert fsio.sha256_file(bag_dir / rel) == expected
+
+
+def test_detects_modified_bag_data(fair_dirs):
+    """Byte-level tamper detection — a changed .db3 fails verification."""
+    crate = _make_crate(fair_dirs)
+    db = next(crate.glob("bags/*/*.db3"))
+    db.write_bytes(db.read_bytes() + b"tampered")
+    checks = verify.verify_archive(crate)
+    assert any(c["status"] == FAIL and "has been modified" in c["title"]
+               for c in checks)
+
+
+def test_pre_1_0_archive_without_checksums_warns(fair_dirs):
+    """An archive whose bags predate file_sha256 still verifies structurally."""
+    crate = _make_crate(fair_dirs)
+    record_file = crate / "mission_record.json"
+    data = json.loads(record_file.read_text())
+    for bag in data["bags"]:
+        bag["file_sha256"] = {}
+    record_file.write_text(json.dumps(data))
+    checks = verify.verify_archive(crate)
+    assert FAIL not in _statuses(checks)
+    assert any(c["status"] == WARN and "no checksums recorded" in c["title"]
                for c in checks)
 
 

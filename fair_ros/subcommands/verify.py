@@ -80,12 +80,34 @@ def verify_archive(crate: Path) -> list[dict]:
         else:
             add(WARN, f"{rel} is missing")
 
-    # 4. Bags: directory, metadata, and the storage files metadata lists.
+    # 4. Bags. When per-file checksums were recorded (>= 1.0) re-hash and
+    #    compare for byte-level integrity; otherwise fall back to a structural
+    #    check (metadata + the storage files metadata lists) for older archives.
     for bag in record.bags:
+        name = Path(bag.path).name
         bag_dir = crate / bag.path
         if not bag_dir.is_dir():
             add(FAIL, f"Recording {bag.path} is missing")
             continue
+        if bag.file_sha256:
+            missing, modified = [], []
+            for rel, expected in bag.file_sha256.items():
+                f = bag_dir / rel
+                if not f.is_file():
+                    missing.append(rel)
+                elif fsio.sha256_file(f) != expected:
+                    modified.append(rel)
+            if missing:
+                add(FAIL, f"Recording {name} is missing data files",
+                    ", ".join(missing))
+            elif modified:
+                add(FAIL, f"Recording {name} has been modified",
+                    ", ".join(modified))
+            else:
+                add(OK, f"Recording {name} matches its checksums",
+                    f"{len(bag.file_sha256)} file(s)")
+            continue
+        # Pre-1.0 archive: structural check only.
         meta = topic_health.parse_bag_metadata(bag_dir)
         if meta is None:
             add(FAIL, f"Recording {bag.path} has no readable metadata")
@@ -96,7 +118,7 @@ def verify_archive(crate: Path) -> list[dict]:
             add(FAIL, f"Recording {bag.path} is missing data files",
                 ", ".join(missing))
         else:
-            add(OK, f"Recording {Path(bag.path).name} is complete",
+            add(WARN, f"Recording {name} is present (no checksums recorded)",
                 f"{len(meta['relative_file_paths'])} storage file(s)")
 
     # 5. Calibrations: re-hash and compare to the recorded sha256.

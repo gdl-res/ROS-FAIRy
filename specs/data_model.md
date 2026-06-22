@@ -181,6 +181,7 @@ watchdog FINALISING step from rosbag2's own `metadata.yaml` plus
 | `message_count` | `int` | yes | auto | bag metadata | |
 | `topics` | `list[BagTopic]` | yes | auto | bag metadata | `BagTopic = {name, type, message_count, avg_frequency_hz}`. |
 | `health_warnings` | `list[HealthWarning]` | yes | auto | `utils/topic_health.py` | Empty list = healthy. |
+| `file_sha256` | `dict[str, str]` | no | auto | `archive/assembler.py` (at archive time) | Bag-relative file path → sha256 for every file in the bag, recorded when the bag is moved into the crate. Pins the archived bytes for `ros2 fair verify`. Empty `{}` for pre-1.0 archives. |
 
 ### `HealthWarning`
 

@@ -145,6 +145,9 @@ class Bag(_Model):
     message_count: int
     topics: list[BagTopic] = Field(default_factory=list)
     health_warnings: list[HealthWarning] = Field(default_factory=list)
+    # Bag-relative file path -> sha256, recorded at archive time (the bag is
+    # moved verbatim, so this pins its bytes). Empty for pre-1.0 archives.
+    file_sha256: dict[str, str] = Field(default_factory=dict)
 
 
 class Provenance(_Model):

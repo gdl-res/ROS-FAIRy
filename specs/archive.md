@@ -54,6 +54,11 @@ Fallback: if `rename` raises `EXDEV` (someone mounted archive elsewhere), fall
 back to copy-then-delete per bag: `shutil.copytree` → verify total size matches
 → delete spool original. The progress bar in `mission_close` covers this path.
 
+Before the move, the assembler hashes every file in each bag and records the
+digests in `bags[].file_sha256` (bag-relative path → sha256). Hashing the spool
+copy is safe — `rename` and the EXDEV copy-fallback both preserve bytes — and
+lets `ros2 fair verify` detect byte-level bag modification later.
+
 Small files (calibrations, compose files, harvest artifacts) are **copied**, not
 moved — their originals belong to the robot's live configuration. Each copy gets
 a sha256 recorded in the manifest (`calibrations[].sha256`).
