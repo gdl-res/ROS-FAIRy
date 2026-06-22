@@ -308,3 +308,43 @@ rather than crashing the command.
 Options:
 - `--json` — emits `{"result": "ok|warn|fail", "checks": [{"status", "title",
   "detail", "hint"}, …]}` to stdout.
+
+---
+
+## `ros2 fair export [<mission>]`
+
+Packages a saved mission archive (an RO-Crate *directory*) into a single
+portable file for sharing or deposit — replacing the operator's manual hand-zip.
+The mission argument is resolved the same way as `diff`/`verify` (number, archive
+path, or mission ID); no argument exports the most recent mission. Read-only with
+respect to the archive and index.
+
+Behaviour:
+- Bundles the whole crate under a top-level folder named after the archive (so
+  unpacking yields `<name>/ro-crate-metadata.json`, …).
+- Default format `zip`; `--format tar` writes a `.tar`. Both are **stored
+  uncompressed** — bag data (MCAP, images) is already compressed, so deflating
+  multi-GB recordings only costs CPU. ZIP64 is enabled for large bags.
+- Written atomically (`<dest>.part` then renamed); on any error the partial file
+  is removed and nothing is left behind.
+- Refuses to overwrite an existing output unless `--force`.
+- Writes a `sha256sum`-compatible sidecar `<dest>.sha256` (`"<sha256>  <name>"`)
+  so the recipient can prove the transfer with `sha256sum -c`. Internal
+  per-file integrity is still checkable with `ros2 fair verify` after unpacking.
+- Runs `verify` on the source first; if it fails, prints a warning but still
+  exports (the operator asked, and a flawed copy can be worth shipping).
+- Shows a transient byte-progress bar while packaging.
+
+Output location (`--output`/`-o`): a file path is used verbatim; a directory (or
+a trailing `/`) writes `<name>.<ext>` into it; default is the current directory.
+
+Exit code `0` on success, `1` on a resolve/verify-load error, an existing output
+without `--force`, or a write failure.
+
+Options:
+- `--output`, `-o` — output file or directory.
+- `--format {zip,tar}` — bundle format (default `zip`).
+- `--force` — overwrite an existing output file.
+- `--json` — emits `{"mission_id", "source", "bundle", "format", "size_bytes",
+  "sha256", "checksum_file", "verify_result"}` to stdout (`verify_result` is
+  `ok|warn|fail|unknown`; `unknown` if the integrity check couldn't run).

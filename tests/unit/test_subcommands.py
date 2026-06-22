@@ -1,6 +1,7 @@
 import io
 import json
 import os
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
@@ -9,6 +10,7 @@ from rich.console import Console
 from fair_ros.manifest import builder
 from fair_ros.subcommands import (
     doctor,
+    export,
     list_missions,
     mission_close,
     mission_diff,
@@ -286,6 +288,64 @@ def test_setup_ask_robot_validates_email(fair_dirs):
                            side_effect=lambda *a, **k: next(answers)):
         config = setup_cmd.ask_robot(_console(), {})
     assert config["owner"]["contact_email"] == "fleet@example.org"
+
+
+# --- export ------------------------------------------------------------------
+
+def _make_archive(fair_dirs):
+    from fair_ros.archive import assembler
+    harvest, context = _spool(fair_dirs)
+    record = builder.build(harvest, context)
+    return assembler.assemble(record, harvest)
+
+
+def test_export_creates_zip_and_checksum(fair_dirs, tmp_path):
+    import zipfile
+    crate = _make_archive(fair_dirs)
+    out = tmp_path / "share"
+    out.mkdir()  # an existing directory is treated as the output folder
+    args = SimpleNamespace(mission=str(crate), output=str(out), format="zip",
+                           force=False, json=False)
+    assert export.run(args, console=_console()) == 0
+
+    bundle = out / f"{crate.name}.zip"
+    sidecar = out / f"{crate.name}.zip.sha256"
+    assert bundle.is_file() and sidecar.is_file()
+    # checksum sidecar is correct and sha256sum-compatible
+    digest, name = sidecar.read_text().split()
+    assert digest == fsio.sha256_file(bundle) and name == bundle.name
+    # bundle has a top-level crate folder
+    with zipfile.ZipFile(bundle) as zf:
+        names = zf.namelist()
+    assert f"{crate.name}/mission_record.json" in names
+
+
+def test_export_refuses_existing_without_force(fair_dirs, tmp_path):
+    crate = _make_archive(fair_dirs)
+    dest = tmp_path / "m.zip"
+    dest.write_text("old")
+    base = dict(mission=str(crate), output=str(dest), format="zip", json=False)
+    assert export.run(SimpleNamespace(**base, force=False),
+                      console=_console()) == 1
+    assert export.run(SimpleNamespace(**base, force=True),
+                      console=_console()) == 0
+    assert dest.read_bytes()[:2] == b"PK"  # overwritten with a real zip
+
+
+def test_export_json(fair_dirs, tmp_path, capsys):
+    crate = _make_archive(fair_dirs)
+    args = SimpleNamespace(mission=str(crate), output=str(tmp_path),
+                           format="zip", force=False, json=True)
+    assert export.run(args) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["sha256"] == fsio.sha256_file(Path(data["bundle"]))
+    assert data["mission_id"] and data["verify_result"] in ("ok", "warn", "fail")
+
+
+def test_export_unknown_mission(fair_dirs):
+    args = SimpleNamespace(mission="does-not-exist", output=None, format="zip",
+                           force=False, json=False)
+    assert export.run(args, console=_console()) == 1
 
 
 # --- doctor ------------------------------------------------------------------
