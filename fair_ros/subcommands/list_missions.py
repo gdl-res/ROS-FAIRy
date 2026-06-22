@@ -49,6 +49,7 @@ def run(args, console: Console | None = None) -> int:
         location=getattr(args, "location", None),
         since=getattr(args, "since", None),
         until=getattr(args, "until", None),
+        quality=getattr(args, "quality", None),
         limit=getattr(args, "limit", 20) or 20)
 
     if as_json:
@@ -108,6 +109,8 @@ class ListVerb(VerbExtension):
                             help="only missions on or after this date")
         parser.add_argument("--until", metavar="YYYY-MM-DD",
                             help="only missions up to this date")
+        parser.add_argument("--quality", choices=["ok", "degraded", "poor"],
+                            help="only missions with this data-quality verdict")
         parser.add_argument("--limit", type=int, default=20,
                             help="maximum rows to show (default 20)")
         parser.add_argument("--path", action="store_true",

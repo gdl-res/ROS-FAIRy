@@ -356,6 +356,18 @@ def test_index_filters(fair_dirs):
     assert rows == [] and total == 1
 
 
+def test_index_quality_filter(fair_dirs):
+    harvest, context = _spool(fair_dirs)
+    record = builder.build(harvest, context)
+    record.provenance.data_quality = "poor"
+    index.insert(record, paths.archive_dir() / "x")
+
+    rows, total = index.query(quality="poor")
+    assert total == 1
+    rows, total = index.query(quality="ok")
+    assert total == 0
+
+
 def test_reindex_rebuilds(fair_dirs):
     harvest, context = _spool(fair_dirs)
     record = builder.build(harvest, context)
