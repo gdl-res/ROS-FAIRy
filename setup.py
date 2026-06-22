@@ -61,6 +61,7 @@ setup(
             "verify = fair_ros.subcommands.verify:VerifyVerb",
             "doctor = fair_ros.subcommands.doctor:DoctorVerb",
             "export = fair_ros.subcommands.export:ExportVerb",
+            "repair = fair_ros.subcommands.repair:RepairVerb",
         ],
         "console_scripts": [
             "fair-ros-watchdog = fair_ros.watchdog.watchdog:main",

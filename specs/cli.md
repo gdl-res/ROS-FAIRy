@@ -365,3 +365,45 @@ Options:
 - `--json` — emits `{"mission_id", "source", "bundle", "format", "size_bytes",
   "sha256", "checksum_file", "verify_result"}` to stdout (`verify_result` is
   `ok|warn|fail|unknown`; `unknown` if the integrity check couldn't run).
+
+---
+
+## `ros2 fair repair [<mission>]`
+
+Makes a saved mission's **unplayable** recordings playable again. A bag recorded
+with an unsynchronised clock has most messages stamped near the epoch (1970), so
+`ros2 bag play` honours the resulting ~56-year timeline and stalls. This writes a
+re-stamped, immediately-playable **copy** of each affected recording — the
+original archive is never touched, so its `file_sha256` checksums and `verify`
+result still hold.
+
+The argument is a mission (number / archive path / mission ID, like `verify`) or
+a path to a single bag directory; no argument repairs the most recent mission.
+
+Behaviour:
+- For each recording, decides via `utils/bag_repair.needs_repair` (re-derived
+  from the message timestamps) whether the clock is unrecoverable. Healthy
+  recordings are left alone and reported as "already playable"; `--all`
+  re-stamps every recording regardless.
+- Writes each repaired recording as `<output>/<bag-name>/` containing a
+  re-stamped MCAP **and a regenerated `metadata.yaml`** (topic types/QoS reused
+  from the source, only timing and the storage file fixed), so the result plays
+  directly — no `ros2 bag reindex` needed.
+- Output goes to `--output`/`-o` (default `./<name>_repaired/`); refuses a
+  non-empty output directory unless `--force`.
+- Only MCAP bags can be repaired; other formats are reported as skipped.
+
+**The repaired timing is synthetic** (messages keep their original order, types
+and bytes; inter-message spacing is spread evenly over `--duration`, default the
+span of the few real stamps else 60 s). Good for inspection and playback; not
+for time-critical processing. The only real fix is to sync the clock before
+recording — see `docs/recovering-bad-clock-bags.md`. Exit code `0` (including
+when nothing needed repair), `1` only on a bad target.
+
+Options:
+- `--output`, `-o` — directory for repaired recordings.
+- `--all` — re-stamp every recording, not only the bad-clock ones.
+- `--duration SECONDS` — target playback length per repaired recording.
+- `--force` — write into a non-empty output directory.
+- `--json` — emits `{"target", "output", "repaired", "bags": [{"bag", "status",
+  …}]}` to stdout.

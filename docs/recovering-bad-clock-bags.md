@@ -34,14 +34,22 @@ wrapper).
 
 ## Recovering an existing bad bag
 
-`tools/restamp_bag.py` rewrites a **new** bag (originals untouched) with a
-dense, monotonic synthetic clock so it can be played and inspected. Requires the
-`mcap` package.
+Use `ros2 fair repair` — it writes **new**, immediately-playable copies of the
+affected recordings (originals untouched, so checksums and `verify` still hold)
+and regenerates each `metadata.yaml`, so no `ros2 bag reindex` step is needed.
+
+```bash
+ros2 fair repair 1 -o ~/repaired     # mission 1 (newest); --all to force every bag
+ros2 bag play ~/repaired/<bag-name>  # now plays; echo shows data
+```
+
+It also accepts a path to a single bag directory. For a bare machine without a
+sourced ROS/fair-ros environment, `tools/restamp_bag.py` is a thin wrapper over
+the same code:
 
 ```bash
 python3 tools/restamp_bag.py <bad_bag_dir> <new_bag_dir> --duration 120
-ros2 bag reindex <new_bag_dir> mcap     # regenerate metadata.yaml
-ros2 bag play <new_bag_dir>             # now plays; echo shows data
+ros2 bag play <new_bag_dir>
 ```
 
 **The new timing is synthetic.** Messages keep their original order, types and

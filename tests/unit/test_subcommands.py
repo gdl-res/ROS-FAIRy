@@ -1,3 +1,4 @@
+import importlib.util
 import io
 import json
 import os
@@ -5,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+import pytest
 from rich.console import Console
 
 from fair_ros.manifest import builder
@@ -17,6 +19,7 @@ from fair_ros.subcommands import (
     mission_record,
     mission_start,
     mission_status,
+    repair,
 )
 from fair_ros.subcommands import setup as setup_cmd
 from fair_ros.utils import clock, fsio, paths
@@ -288,6 +291,45 @@ def test_setup_ask_robot_validates_email(fair_dirs):
                            side_effect=lambda *a, **k: next(answers)):
         config = setup_cmd.ask_robot(_console(), {})
     assert config["owner"]["contact_email"] == "fleet@example.org"
+
+
+# --- repair ------------------------------------------------------------------
+
+_MCAP = importlib.util.find_spec("mcap") is not None
+
+
+@pytest.mark.skipif(not _MCAP, reason="mcap package not installed")
+def test_repair_command_on_single_bad_bag(tmp_path):
+    from tests.conftest import make_mcap_bag
+    bad = make_mcap_bag(tmp_path / "rosbag2_bad",
+                        {"/data": [float(i) for i in range(1, 31)]
+                         + [1_750_000_000.0 + i * 0.5 for i in range(11)]})
+    out = tmp_path / "out"
+    args = SimpleNamespace(mission=str(bad), output=str(out), all=False,
+                           duration=10.0, force=False, json=False)
+    assert repair.run(args, console=_console()) == 0
+    fixed = out / bad.name
+    assert (fixed / "metadata.yaml").is_file() and list(fixed.glob("*.mcap"))
+
+
+@pytest.mark.skipif(not _MCAP, reason="mcap package not installed")
+def test_repair_command_skips_healthy_bag(tmp_path):
+    from tests.conftest import make_mcap_bag
+    good = make_mcap_bag(tmp_path / "rosbag2_ok",
+                         {"/data": [1_750_000_000.0 + i * 0.1 for i in range(50)]})
+    out = tmp_path / "out"
+    console = _console()
+    args = SimpleNamespace(mission=str(good), output=str(out), all=False,
+                           duration=None, force=False, json=False)
+    assert repair.run(args, console=console) == 0
+    assert "nothing to repair" in console.file.getvalue()
+    assert not out.exists()
+
+
+def test_repair_command_unknown_target(fair_dirs):
+    args = SimpleNamespace(mission="nope", output=None, all=False,
+                           duration=None, force=False, json=False)
+    assert repair.run(args, console=_console()) == 1
 
 
 # --- data quality / degradation gate -----------------------------------------

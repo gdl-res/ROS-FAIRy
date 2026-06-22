@@ -68,6 +68,7 @@ fair-ros/
 │   │   ├── verify.py                ← integrity-check a saved archive (ros2 fair verify)
 │   │   ├── doctor.py                ← preflight readiness self-check (ros2 fair doctor)
 │   │   ├── export.py                ← package a mission into one portable file (ros2 fair export)
+│   │   ├── repair.py                ← re-stamp bad-clock bags so they play (ros2 fair repair)
 │   │   └── list_missions.py
 │   ├── harvest/                     ← auto-discovery subsystem
 │   │   ├── ros_graph.py             ← nodes, topics, params via subprocess
@@ -100,9 +101,10 @@ fair-ros/
 │       ├── bag_storage.py           ← pluggable rosbag2 storage readers (sqlite3 + mcap)
 │       ├── ros_distro.py            ← distro detection + per-distro capabilities (default storage)
 │       ├── clock.py                 ← system clock NTP-sync check (pre-record guardrail)
+│       ├── bag_repair.py            ← re-stamp an unsynced-clock bag into a playable copy
 │       └── topic_health.py          ← gap detection + recording-window recovery
 ├── tools/
-│   └── restamp_bag.py               ← recover an unplayable bag from an unsynced-clock recording
+│   └── restamp_bag.py               ← bare-machine wrapper over utils/bag_repair
 ├── systemd/
 │   └── fair-ros-watchdog.service
 ├── tests/
@@ -213,8 +215,12 @@ Every field carries a `confidence` tag: `"auto"` or `"user"`.
 - `export.py` — package a saved mission crate into one portable `.zip`/`.tar`
   (top-level folder, stored/uncompressed) with a `sha256sum`-compatible sidecar;
   warns if the source fails `verify`; refuses to clobber without `--force`
-  (`mission_status`, `list`, `diff`, `verify`, `doctor`, and `export` accept
-  `--json`)
+- `repair.py` — write playable copies of a mission's bad-clock recordings via
+  `utils/bag_repair` (re-stamped, regenerated `metadata.yaml`, no manual
+  reindex); non-destructive (originals untouched); accepts a mission or a single
+  bag dir
+  (`mission_status`, `list`, `diff`, `verify`, `doctor`, `export`, and `repair`
+  accept `--json`)
 
 ### Manifest Builder (`manifest/`)
 - `builder.py` merges `harvest.json` + `mission_context.json` → `MissionRecord`
@@ -261,6 +267,7 @@ Subcommands register under:
         'verify = fair_ros.subcommands.verify:VerifyVerb',
         'doctor = fair_ros.subcommands.doctor:DoctorVerb',
         'export = fair_ros.subcommands.export:ExportVerb',
+        'repair = fair_ros.subcommands.repair:RepairVerb',
     ],
 ```
 

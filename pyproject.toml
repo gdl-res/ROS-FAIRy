@@ -19,6 +19,13 @@ python_version = "3.10"
 ignore_missing_imports = true   # ros2cli, inotify_simple, rocrate have no stubs
 exclude = ["build", "dist", "tests"]
 
+# The installed `mcap` package confuses mypy's module resolution ("source file
+# found twice"); we only use it behind runtime guards, so don't analyse it.
+[[tool.mypy.overrides]]
+module = "mcap.*"
+follow_imports = "skip"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Live-ROS smoke tests are deselected by default so the no-ROS suite (and CI)
