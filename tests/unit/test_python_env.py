@@ -6,13 +6,9 @@ real package index required.
 
 import json
 import sys
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 import fair_ros.harvest.python_env as pe
-
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -110,7 +106,6 @@ def test_fair_ros_editable_false(monkeypatch):
 
 
 def test_pip_unavailable(monkeypatch):
-    import subprocess
     monkeypatch.setattr(pe, "distributions", lambda: iter([
         _fake_dist("somelib", "1.0.0")]))
 

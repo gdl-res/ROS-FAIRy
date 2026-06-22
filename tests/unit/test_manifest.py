@@ -124,6 +124,7 @@ def test_harvest_level_warnings():
 
 def test_load_spool(fair_dirs):
     import json
+
     from fair_ros.utils import paths
     assert builder.load_spool() == (None, None)
     paths.harvest_json_path().write_text(json.dumps(_harvest()))

@@ -135,9 +135,36 @@ def test_full_cycle(rig):
     assert json.loads(paths.watchdog_state_path().read_text())["state"] == "IDLE"
 
 
+def test_storage_present_before_watch_still_records(rig):
+    """Race: the first storage chunk lands before W2 is armed.
+
+    inotify never delivers a CREATE for a file that predates ``add_watch``,
+    so a bag whose first ``.db3`` appears in the window between the directory
+    showing up and the per-bag watch being armed would be missed entirely —
+    no RECORDING, no context harvest. Here only the dir-created event is
+    emitted; the storage file already exists and no file event ever fires.
+    The watchdog must scan the new directory on arm and still record.
+    """
+    ino, clock, dog = rig
+    name = "rosbag2_race"
+    bag = make_bag(paths.bags_dir() / name, {"/fix": _steady(T0, T0 + 60, 10)})
+    (bag / "metadata.yaml").unlink()  # recording still in progress
+
+    ino.emit_dir_created(paths.bags_dir(), name)
+    dog.step(0)  # no storage-file event is ever emitted
+
+    assert dog.state == RECORDING
+    assert dog.active_bag_dir == bag
+    harvest, _ = builder.load_spool()
+    assert harvest["robot"]["name"] == "Heron-02"
+    state = json.loads(paths.watchdog_state_path().read_text())
+    assert state["state"] == "RECORDING"
+    assert state["active_bag_dir"] == str(bag)
+
+
 def test_inactivity_finalises_crashed_bag(rig):
     ino, clock, dog = rig
-    bag = _record_bag(rig, with_metadata=False)
+    _record_bag(rig, with_metadata=False)
     assert dog.state == RECORDING
 
     clock.now += wd_mod.BAG_INACTIVITY_S + 1

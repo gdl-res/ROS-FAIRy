@@ -64,12 +64,15 @@ fair-ros/
 │   │   ├── mission_record.py
 │   │   ├── mission_close.py
 │   │   ├── mission_status.py
+│   │   ├── mission_diff.py          ← compare two missions (ros2 fair diff)
 │   │   └── list_missions.py
 │   ├── harvest/                     ← auto-discovery subsystem
 │   │   ├── ros_graph.py             ← nodes, topics, params via subprocess
 │   │   ├── ros_descriptions.py      ← /robot_description, /tf_static via rclpy
 │   │   ├── docker_info.py           ← image digests, compose snapshot
 │   │   ├── system_info.py           ← hostname, arch, kernel
+│   │   ├── python_env.py            ← interpreter, installed packages, pip freeze
+│   │   ├── hardware_devices.py      ← USB/PCI/video/serial devices, udev props
 │   │   └── robot_identity.py        ← reads /etc/fair-ros/robot_identity.yaml
 │   ├── watchdog/
 │   │   ├── watchdog.py              ← inotify watcher on spool/bags/
@@ -85,9 +88,11 @@ fair-ros/
 │   ├── ui/
 │   │   ├── briefing.py              ← interactive mission_start wizard (rich TUI)
 │   │   ├── review.py                ← mission_close summary + confirm/discard
+│   │   ├── diff.py                  ← mission diff rendering
 │   │   └── status.py                ← mission_status display
 │   └── utils/
 │       ├── paths.py                 ← canonical paths (spool, archive, config)
+│       ├── fsio.py                  ← atomic JSON writes, directory sizing
 │       └── topic_health.py          ← gap detection on topic timestamps
 ├── systemd/
 │   └── fair-ros-watchdog.service
@@ -145,6 +150,7 @@ MissionRecord
 ├── ros_graph         # nodes, topics, params snapshot at mission start
 ├── calibrations[]    # paths to cal files linked from robot_identity.yaml
 ├── bags[]            # paths, sizes, duration, topic health report
+├── hardware_devices[] # USB/PCI/video/serial devices discovered at mission start
 └── provenance        # fair-ros version, harvest timestamp, confidence tags
 ```
 
@@ -170,6 +176,10 @@ Every field carries a `confidence` tag: `"auto"` or `"user"`.
   grab `/robot_description` and `/tf_static`; returns empty dict on timeout
 - `docker_info.py` runs `docker inspect` on all running containers; graceful
   no-op if Docker is not available
+- `python_env.py` captures the interpreter, installed packages (with editable
+  flags) and a pip-freeze snapshot via subprocess; partial result, never fails
+- `hardware_devices.py` enumerates USB/PCI/video/serial devices and udev
+  properties; missing tools (e.g. no `lsusb`) yield partial results, not errors
 - `topic_health.py` post-processes bag metadata to detect topic gaps > 1 second
 
 ### CLI (`subcommands/`)
@@ -183,6 +193,8 @@ Every field carries a `confidence` tag: `"auto"` or `"user"`.
   warnings, asks "Save this mission? [Y/n]", calls assembler if yes
 - `mission_status.py` — shows current watchdog state, spool size, active bags
 - `list_missions.py` — queries SQLite index, shows table of past missions
+- `mission_diff.py` — compares two missions and shows only what changed
+  (`mission_status`, `list`, and `diff` accept `--json` for machine output)
 
 ### Manifest Builder (`manifest/`)
 - `builder.py` merges `harvest.json` + `mission_context.json` → `MissionRecord`
@@ -221,6 +233,7 @@ Subcommands register under:
         'mission_close = fair_ros.subcommands.mission_close:MissionCloseVerb',
         'mission_status = fair_ros.subcommands.mission_status:MissionStatusVerb',
         'list = fair_ros.subcommands.list_missions:ListVerb',
+        'diff = fair_ros.subcommands.mission_diff:DiffVerb',
     ],
 ```
 
@@ -270,5 +283,5 @@ Do not skip ahead. Each phase builds on the previous one.
 - Web UI (CLI only for v1)
 - Multi-robot session tracking
 - Automatic environment data from external APIs (weather, map tiles)
-- Migration tooling for ROS 2 distros other than Jazzy (structure is ready, not implemented)Xy
+- Migration tooling for ROS 2 distros other than Jazzy (structure is ready, not implemented)
 

@@ -5,13 +5,9 @@ and filesystem globs are monkeypatched.
 """
 
 import subprocess
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 import fair_ros.harvest.hardware_devices as hd
-
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -358,11 +354,12 @@ def test_dmesg_filtered_keywords(monkeypatch):
     assert result["dmesg_usb"] is not None
     lines = result["dmesg_usb"].splitlines()
     # "eth0: renamed" and "EXT4-fs" lines must be excluded
-    assert not any("eth0" in l for l in lines)
-    assert not any("EXT4" in l for l in lines)
+    assert not any("eth0" in line for line in lines)
+    assert not any("EXT4" in line for line in lines)
     # USB and video lines must be present
-    assert any("usb" in l.lower() for l in lines)
-    assert any("video4linux" in l.lower() or "tty" in l.lower() for l in lines)
+    assert any("usb" in line.lower() for line in lines)
+    assert any("video4linux" in line.lower() or "tty" in line.lower()
+               for line in lines)
 
 
 def test_dmesg_permission_denied(monkeypatch):

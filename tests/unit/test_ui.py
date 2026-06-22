@@ -4,7 +4,6 @@ from unittest import mock
 from rich.console import Console
 
 from fair_ros.manifest import builder
-from fair_ros.manifest.schema import MissionRecord
 from fair_ros.ui import briefing, review, status
 
 

@@ -24,5 +24,5 @@ class FairCommand(CommandExtension):
         if not hasattr(args, "_verb"):
             self._subparser.print_help()
             return 0
-        extension = getattr(args, "_verb")
+        extension = args._verb
         return extension.main(args=args)

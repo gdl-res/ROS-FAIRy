@@ -23,6 +23,10 @@ setup(
         "PyYAML>=6",
         "inotify_simple>=1.3",
     ],
+    extras_require={
+        "test": ["pytest", "rocrate"],
+        "dev": ["pytest", "rocrate", "ruff", "mypy"],
+    },
     zip_safe=False,
     author="fair-ros contributors",
     maintainer="fair-ros contributors",
@@ -31,7 +35,6 @@ setup(
                 "friction: automatic context capture, plain-language "
                 "briefings, RO-Crate archives.",
     license="Apache-2.0",
-    tests_require=["pytest", "rocrate"],
     entry_points={
         "ros2cli.command": [
             "fair = fair_ros.command.fair:FairCommand",

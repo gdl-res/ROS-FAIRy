@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from fair_ros.archive import assembler, index, ro_crate
+from fair_ros.archive import assembler, index
 from fair_ros.archive.assembler import AssemblyError
 from fair_ros.manifest import builder
 from fair_ros.utils import fsio, paths
@@ -214,8 +214,15 @@ def test_ro_crate_document(fair_dirs):
 
 def test_readme_flags_identifying_serials():
     from datetime import datetime, timezone
+
     from fair_ros.manifest.schema import (
-        MissionRecord, Identity, Intent, Software, Provenance, HardwareDevice)
+        HardwareDevice,
+        Identity,
+        Intent,
+        MissionRecord,
+        Provenance,
+        Software,
+    )
     rec = MissionRecord(
         identity=Identity(mission_id="m-x",
                           created_at=datetime(2026, 6, 12, tzinfo=timezone.utc),

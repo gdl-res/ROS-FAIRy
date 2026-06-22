@@ -12,12 +12,13 @@ import json
 import re
 import shutil
 import unicodedata
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from fair_ros.manifest.schema import MissionRecord
 from fair_ros.archive import index, ro_crate
+from fair_ros.manifest.schema import MissionRecord
 from fair_ros.utils import fsio, paths
 
 

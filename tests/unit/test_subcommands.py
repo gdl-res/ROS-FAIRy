@@ -7,9 +7,15 @@ from unittest import mock
 from rich.console import Console
 
 from fair_ros.manifest import builder
-from fair_ros.subcommands import (list_missions, mission_close,
-                                  mission_diff, mission_record, mission_start,
-                                  mission_status, setup as setup_cmd)
+from fair_ros.subcommands import (
+    list_missions,
+    mission_close,
+    mission_diff,
+    mission_record,
+    mission_start,
+    mission_status,
+)
+from fair_ros.subcommands import setup as setup_cmd
 from fair_ros.utils import fsio, paths
 from tests.unit.test_archive import _spool
 

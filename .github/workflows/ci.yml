@@ -6,6 +6,30 @@ on:
   pull_request:
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package and dev tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: Ruff (lint)
+        run: ruff check .
+
+      - name: Mypy (advisory)
+        # Type checking is informational for now: the existing codebase has
+        # known typing gaps being triaged. It must not block merges yet.
+        continue-on-error: true
+        run: mypy fair_ros
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -26,9 +50,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           # Editable install pulls runtime deps from setup.py and validates
-          # packaging; rocrate gates the crate-validation integration test.
-          pip install -e .
-          pip install pytest rocrate
+          # packaging; the test extra adds pytest and rocrate (rocrate gates
+          # the crate-validation integration test).
+          pip install -e '.[test]'
 
       - name: Run test suite
         run: python -m pytest tests/ -v

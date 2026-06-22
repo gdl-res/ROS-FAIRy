@@ -30,8 +30,8 @@ _DMESG_PATTERN = re.compile(
     r"usb|video|tty|camera|serial|sensor", re.IGNORECASE)
 
 
-def _run(cmd: list[str],
-         timeout: float = HARDWARE_CMD_TIMEOUT_S) -> "subprocess.CompletedProcess | None":
+def _run(cmd: list[str], timeout: float = HARDWARE_CMD_TIMEOUT_S
+         ) -> "subprocess.CompletedProcess | None":
     """Run a command; return None if binary missing, timed out, or OS error."""
     if not shutil.which(cmd[0]):
         return None
@@ -164,8 +164,8 @@ def _serial_by_id() -> list[dict]:
 
 
 def _parse_v4l2_paths(stdout: str) -> list[str]:
-    return [l.strip() for l in stdout.splitlines()
-            if l.strip().startswith("/dev/video")]
+    return [line.strip() for line in stdout.splitlines()
+            if line.strip().startswith("/dev/video")]
 
 
 def _parse_udev_props(stdout: str) -> dict[str, str]:

@@ -118,13 +118,13 @@ def _gap_warnings(topic: str, sensor: dict | None, stamps: list[float],
                   bag_start: float, bag_end: float) -> list[dict]:
     if len(stamps) < 2:
         return []
-    intervals = [b - a for a, b in zip(stamps, stamps[1:])]
+    intervals = [b - a for a, b in zip(stamps, stamps[1:], strict=False)]
     median = statistics.median(intervals)
     threshold = max(GAP_THRESHOLD_S, GAP_MEDIAN_FACTOR * median)
     who = _friendly_name(sensor, topic)
     what = _signal_word(sensor)
     warnings = []
-    for prev, cur in zip(stamps, stamps[1:]):
+    for prev, cur in zip(stamps, stamps[1:], strict=False):
         gap = cur - prev
         if gap <= threshold:
             continue

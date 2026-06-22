@@ -51,7 +51,6 @@ def harvest() -> dict[str, Any]:
     for entry in raw:
         config = entry.get("Config") or {}
         labels = config.get("Labels") or {}
-        digests = entry.get("Image") and (entry.get("RepoDigests") or [])
         # docker inspect puts RepoDigests on image objects, not containers;
         # for containers we re-resolve from .Image via a dedicated inspect.
         containers.append({

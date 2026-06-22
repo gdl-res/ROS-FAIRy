@@ -18,8 +18,12 @@ def harvest(timeout_s: float = RCLPY_TIMEOUT_S) -> dict[str, Any]:
     try:
         import rclpy
         from rclpy.executors import SingleThreadedExecutor
-        from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
-                               ReliabilityPolicy)
+        from rclpy.qos import (
+            DurabilityPolicy,
+            HistoryPolicy,
+            QoSProfile,
+            ReliabilityPolicy,
+        )
         from std_msgs.msg import String
         from tf2_msgs.msg import TFMessage
     except ImportError:

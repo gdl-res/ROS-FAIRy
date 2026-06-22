@@ -60,7 +60,7 @@ def _live_topics(console: Console) -> list[str]:
         out = subprocess.run(["ros2", "topic", "list"], capture_output=True,
                              text=True, timeout=10)
         if out.returncode == 0:
-            return [l.strip() for l in out.stdout.splitlines() if l.strip()]
+            return [ln.strip() for ln in out.stdout.splitlines() if ln.strip()]
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
     return []
@@ -100,7 +100,7 @@ def ask_sensors(console: Console, current: dict) -> tuple[list, list]:
     while Confirm.ask("Add a sensor?", default=True, console=console):
         seen = {s["sensor_id"] for s in sensors}
         sid = _ask(console, "Sensor id (lowercase slug, e.g. gps0)",
-                   validate=lambda s: bool(SLUG_RE.match(s))
+                   validate=lambda s, seen=seen: bool(SLUG_RE.match(s))
                    and s not in seen,
                    reason="lowercase letters/digits/underscore, and unique")
         stype = Prompt.ask("Type", choices=SENSOR_TYPES, console=console)
