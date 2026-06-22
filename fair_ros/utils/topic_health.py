@@ -6,9 +6,17 @@ string and never the raw numbers (CLAUDE.md UI rules).
 
 Timestamp-level gap detection (gaps, low-rate) needs each message's receive
 time; reading those out of a bag is delegated to ``utils/bag_storage`` so this
-module never branches on storage format. sqlite3 is supported today; MCAP
-(Jazzy's default) gets metadata-level checks only (never_published) until a
-reader is implemented there. See ``utils/bag_storage`` for the extension point.
+module never branches on storage format. Both sqlite3 and MCAP (Jazzy's
+default) are supported; formats without a reader degrade to metadata-level
+checks only (never_published). See ``utils/bag_storage`` for the extension
+point.
+
+The metadata header's ``starting_time``/``duration`` cannot be trusted blindly:
+rosbag2 derives them from the minimum message timestamp, so a single message
+stamped near the epoch (an un-stamped or latched sample) reports a 1970 start
+and a duration of decades. ``bag_timing`` recovers the real span from the message
+timestamps (and reports it unknown when the clock was broken for most of the
+run), while ``read_clean_series`` drops those outliers before gap detection.
 """
 
 import statistics
@@ -26,6 +34,19 @@ GAP_MEDIAN_FACTOR = 5.0
 LOW_RATE_FRACTION = 0.25
 LOW_RATE_WINDOW_S = 10.0
 LOW_RATE_MIN_MESSAGES = 20
+
+# Timestamps before this (2000-01-01 UTC) cannot belong to a real field
+# recording. rosbag2 sets metadata starting_time to the minimum message
+# timestamp, so one such message drags the reported start back to ~1970 and
+# inflates duration to decades; we drop these outliers and recompute the window.
+EPOCH_FLOOR_S = 946684800.0
+# A single recording longer than this is implausible; a header claiming more
+# means starting_time is corrupt.
+MAX_PLAUSIBLE_DURATION_S = 30 * 24 * 3600.0
+# If fewer than this fraction of messages carry a plausible timestamp, the
+# recording clock was broken for most of the run and the real window cannot be
+# recovered from the surviving stamps.
+RELIABLE_STAMP_FRACTION = 0.5
 
 _FRIENDLY_TYPE = {
     "gps": "GPS",
@@ -160,15 +181,95 @@ def _low_rate_warning(topic: str, sensor: dict | None, stamps: list[float],
     }
 
 
-def analyse_bag(bag_dir: Path, sensors: list[dict] | None = None) -> list[dict]:
+def read_clean_series(bag_dir: Path,
+                      meta: dict[str, Any]) -> dict[str, list[float]] | None:
+    """Per-topic ascending message timestamps (seconds), with outliers removed.
+
+    Returns None when no supported storage reader exists (timestamp-level work
+    is impossible); an empty dict when a reader ran but found no plausible
+    timestamps. Stamps before ``EPOCH_FLOOR_S`` are dropped so one un-stamped
+    message cannot poison gap detection or the recording window.
+    """
+    reader = bag_storage.get_reader(meta["storage_identifier"])
+    if reader is None or not reader.supported:
+        return None
+    try:
+        series = reader.topic_timestamps(bag_dir, meta["relative_file_paths"])
+    except bag_storage.BagStorageUnsupported:
+        return None
+    cleaned: dict[str, list[float]] = {}
+    for topic, stamps in series.items():
+        good = [s for s in stamps if s >= EPOCH_FLOOR_S]
+        if good:
+            cleaned[topic] = good
+    return cleaned
+
+
+def _plausible_window(start_s: float, duration_s: float) -> bool:
+    return (start_s >= EPOCH_FLOOR_S
+            and 0.0 <= duration_s <= MAX_PLAUSIBLE_DURATION_S)
+
+
+def bag_timing(bag_dir: Path, meta: dict[str, Any],
+               series: dict[str, list[float]] | None
+               ) -> tuple[float | None, float | None, float | None]:
+    """Best estimate of ``(start_s, end_s, duration_s)`` for the bag.
+
+    Returns ``(None, None, None)`` when the recording clock was too unreliable
+    to recover the real window. That happens when most messages carry a
+    near-epoch timestamp (an unsynced system clock that jumped mid-recording):
+    the surviving real stamps cover only a sliver of the run, so any duration or
+    rate derived from them would be badly wrong. Better to report nothing.
+
+    Otherwise prefers the span of real message timestamps, falling back to the
+    metadata header when it is plausible and to the storage files' modification
+    times when it is corrupt and no per-message timestamps are available.
+    """
+    if series:
+        plausible = sum(len(stamps) for stamps in series.values())
+        total = meta.get("message_count") or plausible
+        if total > 0 and plausible / total < RELIABLE_STAMP_FRACTION:
+            return None, None, None
+        lo = min(stamps[0] for stamps in series.values())
+        hi = max(stamps[-1] for stamps in series.values())
+        return lo, hi, max(0.0, hi - lo)
+    start_s, duration_s = meta["start_s"], meta["duration_s"]
+    if _plausible_window(start_s, duration_s):
+        return start_s, start_s + duration_s, duration_s
+    mtimes = [f.stat().st_mtime for f in bag_dir.rglob("*") if f.is_file()]
+    if mtimes and max(mtimes) - min(mtimes) > 0:
+        return min(mtimes), max(mtimes), max(mtimes) - min(mtimes)
+    return None, None, None
+
+
+def _clock_unreliable_warning() -> dict:
+    return {
+        "topic": "",
+        "sensor_id": None,
+        "kind": "unreliable_clock",
+        "start_offset_s": None,
+        "duration_s": None,
+        "plain_text": (
+            "The recording device's clock was not set correctly, so most data "
+            "is time-stamped incorrectly. The length of the recording and the "
+            "data rates could not be measured, and playback timing may be off."),
+    }
+
+
+def analyse_bag(bag_dir: Path, sensors: list[dict] | None = None, *,
+                meta: dict[str, Any] | None = None,
+                series: dict[str, list[float]] | None = None) -> list[dict]:
     """Return HealthWarning dicts for one bag directory.
 
     ``sensors`` is the declared sensor list from robot_identity (may be
-    empty/None when the robot was never set up).
+    empty/None when the robot was never set up). ``meta`` and ``series`` let a
+    caller that already read them (the watchdog reads both once at finalise)
+    avoid a second full pass over the bag.
     """
     sensors = sensors or []
     by_topic = {s["topic"]: s for s in sensors}
-    meta = parse_bag_metadata(bag_dir)
+    if meta is None:
+        meta = parse_bag_metadata(bag_dir)
     warnings: list[dict] = []
 
     if meta is None:
@@ -193,26 +294,25 @@ def analyse_bag(bag_dir: Path, sensors: list[dict] | None = None) -> list[dict]:
                     f"data at all during this recording."),
             })
 
-    reader = bag_storage.get_reader(meta["storage_identifier"])
-    if reader is None or not reader.supported:
-        # Timestamp-level analysis needs a supported storage reader. MCAP
-        # (Jazzy's default) and unknown formats fall here; the metadata-level
-        # checks above still apply. See utils/bag_storage for the MCAP hook.
+    if series is None:
+        series = read_clean_series(bag_dir, meta)
+    if not series:
+        # No supported reader (or no plausible timestamps): the metadata-level
+        # checks above are all we can offer.
         return warnings
 
-    bag_start = meta["start_s"]
-    bag_end = bag_start + meta["duration_s"]
-    try:
-        series = reader.topic_timestamps(bag_dir, meta["relative_file_paths"])
-    except bag_storage.BagStorageUnsupported:
+    bag_start, bag_end, duration_s = bag_timing(bag_dir, meta, series)
+    if duration_s is None or bag_start is None or bag_end is None:
+        # Clock unreliable: per-message timing is meaningless. Flag it once and
+        # skip gap/low-rate analysis (the never_published checks above stand).
+        warnings.append(_clock_unreliable_warning())
         return warnings
     for topic, stamps in series.items():
         topic_sensor = by_topic.get(topic)
         gaps = _gap_warnings(topic, topic_sensor, stamps, bag_start, bag_end)
         warnings.extend(gaps)
         if not gaps:
-            low = _low_rate_warning(topic, topic_sensor, stamps,
-                                    meta["duration_s"])
+            low = _low_rate_warning(topic, topic_sensor, stamps, duration_s)
             if low:
                 warnings.append(low)
     return warnings

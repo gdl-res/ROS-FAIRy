@@ -33,12 +33,15 @@ def show_summary(record: MissionRecord, harvest_warnings: list[str],
     if record.robot:
         facts.add_row("Robot", f"{record.robot.name} "
                                f"({record.robot.platform})")
-    total_s = sum(b.duration_s for b in record.bags)
+    total_s = sum(b.duration_s or 0 for b in record.bags)
     total_bytes = sum(b.size_bytes for b in record.bags)
     n = len(record.bags)
+    # When no bag has a measurable duration, don't claim "0 seconds".
+    length = (humanize_duration(total_s)
+              if any(b.duration_s for b in record.bags) else "length unknown")
     facts.add_row("Recording",
                   f"{n} recording{'s' if n != 1 else ''}, "
-                  f"{humanize_duration(total_s)}, {human_size(total_bytes)}")
+                  f"{length}, {human_size(total_bytes)}")
 
     warned_sensors = {w.sensor_id for b in record.bags
                       for w in b.health_warnings if w.sensor_id}

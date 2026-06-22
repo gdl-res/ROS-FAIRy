@@ -29,6 +29,18 @@ def robot_identity_path() -> Path:
     return config_dir() / "robot_identity.yaml"
 
 
+def watchdog_env_path() -> Path:
+    """systemd EnvironmentFile holding the ROS 2 environment captured at setup.
+
+    The watchdog runs as a system service with no login shell, so the ROS
+    environment the operator had sourced when running ``setup`` is snapshotted
+    here and loaded by the unit (``EnvironmentFile=``). Without it ``ros2`` is
+    not on PATH and the graph/description harvest fails. The unit references the
+    default ``/etc/fair-ros/watchdog.env``; keep them in sync.
+    """
+    return config_dir() / "watchdog.env"
+
+
 def spool_dir() -> Path:
     return var_dir() / "spool"
 

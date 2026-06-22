@@ -175,13 +175,22 @@ watchdog FINALISING step from rosbag2's own `metadata.yaml` plus
 | `path` | `str` | yes | auto | watchdog | Relative path inside the crate after assembly (`bags/<dir>`); spool-absolute before. |
 | `storage_format` | `str` | yes | auto | bag `metadata.yaml` | `sqlite3` or `mcap`. When `metadata.yaml` omits it, inferred from the recording distro via `utils/ros_distro.default_storage()` (Jazzy+ → `mcap`, Foxy–Iron → `sqlite3`). |
 | `size_bytes` | `int` | yes | auto | filesystem | Total directory size. |
-| `start_time` | `datetime` | yes | auto | bag metadata | First message time. |
-| `end_time` | `datetime` | yes | auto | bag metadata | Last message time. |
-| `duration_s` | `float` | yes | auto | bag metadata | |
+| `start_time` | `datetime \| None` | no | auto | message timestamps | First message time. `None` when the recording clock was unreliable (see below). |
+| `end_time` | `datetime \| None` | no | auto | message timestamps | Last message time. `None` when the recording clock was unreliable. |
+| `duration_s` | `float \| None` | no | auto | message timestamps | `None` when the recording clock was unreliable. |
 | `message_count` | `int` | yes | auto | bag metadata | |
-| `topics` | `list[BagTopic]` | yes | auto | bag metadata | `BagTopic = {name, type, message_count, avg_frequency_hz}`. |
+| `topics` | `list[BagTopic]` | yes | auto | bag metadata | `BagTopic = {name, type, message_count, avg_frequency_hz}`. `avg_frequency_hz` is `None` when `duration_s` is unknown. |
 | `health_warnings` | `list[HealthWarning]` | yes | auto | `utils/topic_health.py` | Empty list = healthy. |
 | `file_sha256` | `dict[str, str]` | no | auto | `archive/assembler.py` (at archive time) | Bag-relative file path → sha256 for every file in the bag, recorded when the bag is moved into the crate. Pins the archived bytes for `ros2 fair verify`. Empty `{}` for pre-1.0 archives. |
+
+> **Recording window.** `start_time`/`end_time`/`duration_s` come from the span
+> of real message timestamps, not the `metadata.yaml` header. rosbag2 derives
+> the header's `starting_time` from the minimum message timestamp, so a single
+> message stamped near the epoch (an un-stamped or latched sample) reports a
+> 1970 start and a duration of decades. `utils/topic_health` drops those
+> outliers. When *most* messages carry near-epoch stamps (the clock was broken
+> for the whole run), the window is unrecoverable: all three fields are `None`,
+> topic rates are `None`, and an `unreliable_clock` health warning is emitted.
 
 ### `HealthWarning`
 
@@ -189,7 +198,7 @@ watchdog FINALISING step from rosbag2's own `metadata.yaml` plus
 |---|---|---|
 | `topic` | `str` | Affected topic. |
 | `sensor_id` | `str \| None` | Back-reference to `sensors[]` when the topic matches a declared sensor. |
-| `kind` | `str` | `gap` (silence > 1 s mid-recording), `never_published` (declared sensor topic absent from bag), `low_rate` (avg rate < 25 % of other periods). |
+| `kind` | `str` | `gap` (silence > 1 s mid-recording), `never_published` (declared sensor topic absent from bag), `low_rate` (avg rate < 25 % of other periods), `unreliable_clock` (most messages carry near-epoch timestamps, so duration/rates can't be measured). |
 | `start_offset_s` | `float \| None` | Seconds from bag start where the problem began. |
 | `duration_s` | `float \| None` | Length of the gap. |
 | `plain_text` | `str` | Pre-rendered sentence shown to the user: "GPS signal was lost for 4 minutes, starting 12 minutes in." UI layers must show this string, never the raw numbers. |

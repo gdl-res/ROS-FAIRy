@@ -62,7 +62,7 @@ def _row_from_record(record: MissionRecord, archive_path: Path) -> tuple:
         record.intent.location_name,
         record.intent.goal,
         str(archive_path),
-        sum(b.duration_s for b in record.bags),
+        sum(b.duration_s or 0 for b in record.bags),
         sum(b.size_bytes for b in record.bags),
         len(record.bags),
         sum(len(b.health_warnings) for b in record.bags),

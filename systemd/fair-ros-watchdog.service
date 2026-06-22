@@ -5,6 +5,12 @@ After=local-fs.target
 
 [Service]
 Type=simple
+# ROS 2 environment captured at `ros2 fair setup` (PATH, AMENT_PREFIX_PATH,
+# ROS_DOMAIN_ID, RMW_IMPLEMENTATION, ...). Without it the service has no ROS on
+# PATH and the graph/description harvest fails. `-` makes it optional so the
+# watchdog still starts (and watches the spool) on a robot set up before this
+# file existed. Re-run `ros2 fair setup` to (re)generate it.
+EnvironmentFile=-/etc/fair-ros/watchdog.env
 ExecStart=/usr/bin/python3 -m fair_ros.watchdog.watchdog
 Restart=always
 RestartSec=5

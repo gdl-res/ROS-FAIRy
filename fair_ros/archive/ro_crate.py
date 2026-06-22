@@ -195,10 +195,12 @@ def build(record: MissionRecord, extra_files: list[dict] | None = None,
     }
     if instruments:
         mission["instrument"] = instruments
-    if record.bags:
-        mission["startTime"] = min(b.start_time
-                                   for b in record.bags).isoformat()
-        mission["endTime"] = max(b.end_time for b in record.bags).isoformat()
+    starts = [b.start_time for b in record.bags if b.start_time is not None]
+    ends = [b.end_time for b in record.bags if b.end_time is not None]
+    if starts:
+        mission["startTime"] = min(starts).isoformat()
+    if ends:
+        mission["endTime"] = max(ends).isoformat()
     graph.append(mission)
 
     graph.append({"@id": FAIR_ROS_ID, "@type": "SoftwareApplication",
@@ -237,9 +239,6 @@ def build(record: MissionRecord, extra_files: list[dict] | None = None,
             "@type": "Dataset",
             "name": f"Recording {i}",
             "contentSize": str(bag.size_bytes),
-            "dateCreated": bag.start_time.isoformat(),
-            "temporalCoverage": f"{bag.start_time.isoformat()}/"
-                                f"{bag.end_time.isoformat()}",
             "encodingFormat": _ENCODING.get(bag.storage_format,
                                             "application/octet-stream"),
             "variableMeasured": [
@@ -247,6 +246,12 @@ def build(record: MissionRecord, extra_files: list[dict] | None = None,
                     description=t.type)
                 for j, t in enumerate(bag.topics, start=1)],
         }
+        # Omitted when the recording clock was unreliable (start/end unknown).
+        if bag.start_time is not None:
+            entity["dateCreated"] = bag.start_time.isoformat()
+        if bag.start_time is not None and bag.end_time is not None:
+            entity["temporalCoverage"] = (f"{bag.start_time.isoformat()}/"
+                                          f"{bag.end_time.isoformat()}")
         comments = [w.plain_text for w in bag.health_warnings]
         if len(comments) == 1:
             entity["comment"] = comments[0]

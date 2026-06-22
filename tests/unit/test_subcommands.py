@@ -260,6 +260,39 @@ def test_setup_ask_robot_validates_email(fair_dirs):
     assert config["owner"]["contact_email"] == "fleet@example.org"
 
 
+def test_setup_captures_ros_environment(fair_dirs):
+    """The watchdog runs as a service with no sourced ROS env, so setup must
+    snapshot the operator's ROS environment into the unit's EnvironmentFile."""
+    keep = {"FAIR_ROS_CONFIG_DIR": os.environ["FAIR_ROS_CONFIG_DIR"]}
+    env = {**keep,
+           "ROS_DISTRO": "jazzy",
+           "AMENT_PREFIX_PATH": "/opt/ros/jazzy",
+           "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
+           "ROS_DOMAIN_ID": "7",
+           "PATH": "/opt/ros/jazzy/bin:/usr/bin",
+           "HOME": "/root", "EDITOR": "vim"}
+    with mock.patch.dict(setup_cmd.os.environ, env, clear=True):
+        setup_cmd.write_watchdog_env(_console())
+        text = paths.watchdog_env_path().read_text()
+    assert "ROS_DISTRO=jazzy" in text
+    assert "RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" in text
+    assert "ROS_DOMAIN_ID=7" in text
+    assert "AMENT_PREFIX_PATH=/opt/ros/jazzy" in text
+    assert "PATH=/opt/ros/jazzy/bin:/usr/bin" in text
+    # Non-ROS variables are not snapshotted.
+    assert "EDITOR" not in text
+    assert "HOME=" not in text
+
+
+def test_setup_warns_when_ros_environment_missing(fair_dirs):
+    keep = {"FAIR_ROS_CONFIG_DIR": os.environ["FAIR_ROS_CONFIG_DIR"]}
+    console = _console()
+    with mock.patch.dict(setup_cmd.os.environ, {**keep, "PATH": "/usr/bin"},
+                         clear=True):
+        setup_cmd.write_watchdog_env(console)
+    assert "ROS_DISTRO is unset" in console.file.getvalue()
+
+
 def test_setup_written_identity_is_harvestable(fair_dirs):
     config = {
         "robot": {"name": "Heron-02", "platform": "Heron",

@@ -103,6 +103,42 @@ def test_unknown_topic_friendly_name(tmp_path):
     assert warnings[0]["sensor_id"] is None
 
 
+def test_single_bad_timestamp_is_ignored(tmp_path):
+    """One near-epoch message corrupts rosbag2's metadata (a ~1970 start and a
+    decades-long duration), but the real window is recovered from the rest and
+    no clock warning is raised."""
+    bag = make_bag(tmp_path / "bag", {
+        "/fix": [1.0] + _steady(T0, T0 + 60, 10),   # one bogus stamp
+        "/depth": _steady(T0, T0 + 60, 5),
+    })
+    meta = topic_health.parse_bag_metadata(bag)
+    assert meta["start_s"] < topic_health.EPOCH_FLOOR_S
+    assert meta["duration_s"] > topic_health.MAX_PLAUSIBLE_DURATION_S
+
+    series = topic_health.read_clean_series(bag, meta)
+    start_s, end_s, dur = topic_health.bag_timing(bag, meta, series)
+    assert start_s is not None and end_s is not None
+    assert 59 < dur < 61
+    assert topic_health.analyse_bag(bag, SENSORS) == []
+
+
+def test_unreliable_clock_reported(tmp_path):
+    """When most messages carry near-epoch timestamps the clock was broken for
+    the whole run: report duration unknown instead of guessing a tiny window."""
+    bad = [float(i) for i in range(1, 31)]      # 30 near-epoch stamps
+    good = _steady(T0, T0 + 5, 2)               # 11 real stamps
+    bag = make_bag(tmp_path / "bag", {"/data": bad + good})
+
+    meta = topic_health.parse_bag_metadata(bag)
+    series = topic_health.read_clean_series(bag, meta)
+    assert topic_health.bag_timing(bag, meta, series) == (None, None, None)
+
+    warnings = topic_health.analyse_bag(bag, sensors=[])
+    assert len(warnings) == 1
+    assert warnings[0]["kind"] == "unreliable_clock"
+    assert "clock was not set correctly" in warnings[0]["plain_text"]
+
+
 def test_humanize_duration():
     h = topic_health.humanize_duration
     assert h(1) == "1 second"

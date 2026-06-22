@@ -129,7 +129,7 @@ class BagTopic(_Model):
 class HealthWarning(_Model):
     topic: str
     sensor_id: str | None = None
-    kind: str  # gap | never_published | low_rate
+    kind: str  # gap | never_published | low_rate | unreliable_clock
     start_offset_s: float | None = None
     duration_s: float | None = None
     plain_text: str
@@ -139,9 +139,12 @@ class Bag(_Model):
     path: str
     storage_format: str
     size_bytes: int
-    start_time: datetime
-    end_time: datetime
-    duration_s: float
+    # None when the recording clock was too unreliable to recover the real
+    # window (e.g. an unsynced system clock that left most messages stamped near
+    # the epoch). A health warning explains it; rates are then None too.
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    duration_s: float | None = None
     message_count: int
     topics: list[BagTopic] = Field(default_factory=list)
     health_warnings: list[HealthWarning] = Field(default_factory=list)

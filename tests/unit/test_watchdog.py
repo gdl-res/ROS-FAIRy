@@ -236,6 +236,27 @@ def test_recovery_finalises_leftover_bag(fair_dirs):
     assert harvest["bags"][0]["path"] == str(bag)
 
 
+def test_unreliable_clock_bag_records_unknown_duration(fair_dirs):
+    """A bag whose clock was broken for most of the run is finalised with an
+    unknown duration and no fabricated start/end times or data rates."""
+    bad = [float(i) for i in range(1, 31)]      # 30 near-epoch stamps
+    good = _steady(T0, T0 + 5, 2)               # 11 real stamps
+    bag = make_bag(paths.bags_dir() / "rosbag2_badclock",
+                   {"/data": bad + good})
+
+    wd_mod.append_bag_record(bag)
+
+    harvest, _ = builder.load_spool()
+    rec = harvest["bags"][0]
+    assert rec["duration_s"] is None
+    assert rec["start_time"] is None and rec["end_time"] is None
+    assert all(t["avg_frequency_hz"] is None for t in rec["topics"])
+    assert any(w["kind"] == "unreliable_clock" for w in rec["health_warnings"])
+    # the record still validates against the schema (timing fields optional).
+    from fair_ros.manifest.schema import Bag
+    Bag.model_validate(rec)
+
+
 def test_recovery_resumes_recording(fair_dirs):
     bag = make_bag(paths.bags_dir() / "rosbag2_live",
                    {"/fix": _steady(T0, T0 + 60, 10)})

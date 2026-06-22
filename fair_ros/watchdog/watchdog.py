@@ -384,31 +384,42 @@ def append_bag_record(bag_dir: Path) -> None:
             None, None, None, None, None,
             {m: "failed" for m in builder.HARVEST_MODULES})
     sensors = harvest_doc.get("sensors", [])
-    warnings = topic_health.analyse_bag(bag_dir, sensors)
     meta = topic_health.parse_bag_metadata(bag_dir)
     if meta is not None:
-        start = datetime.fromtimestamp(meta["start_s"], tz=timezone.utc)
-        end = datetime.fromtimestamp(
-            meta["start_s"] + meta["duration_s"], tz=timezone.utc)
+        # One read of the message timestamps feeds both the recording window
+        # (rosbag2's metadata start/duration can be corrupted by near-epoch
+        # messages) and the health analysis.
+        series = topic_health.read_clean_series(bag_dir, meta)
+        start_s, end_s, duration_s = topic_health.bag_timing(
+            bag_dir, meta, series)
+        warnings = topic_health.analyse_bag(
+            bag_dir, sensors, meta=meta, series=series)
+        # duration_s is None when the clock was too unreliable to trust; emit
+        # no fabricated times or rates in that case.
         bag = {
             "path": str(bag_dir),
             "storage_format": meta["storage_identifier"],
             "size_bytes": fsio.dir_size_bytes(bag_dir),
-            "start_time": start.isoformat(),
-            "end_time": end.isoformat(),
-            "duration_s": meta["duration_s"],
+            "start_time": (datetime.fromtimestamp(
+                start_s, tz=timezone.utc).isoformat()
+                if start_s is not None else None),
+            "end_time": (datetime.fromtimestamp(
+                end_s, tz=timezone.utc).isoformat()
+                if end_s is not None else None),
+            "duration_s": duration_s,
             "message_count": meta["message_count"],
             "topics": [
                 {"name": t["name"], "type": t["type"],
                  "message_count": t["message_count"],
                  "avg_frequency_hz": (
-                     round(t["message_count"] / meta["duration_s"], 3)
-                     if meta["duration_s"] > 0 else None)}
+                     round(t["message_count"] / duration_s, 3)
+                     if duration_s and duration_s > 0 else None)}
                 for t in meta["topics"]],
             "health_warnings": warnings,
         }
     else:
         # Hard crash mid-write: recover what the filesystem still knows.
+        warnings = topic_health.analyse_bag(bag_dir, sensors)
         files = [f for f in bag_dir.rglob("*") if f.is_file()]
         mtimes = [f.stat().st_mtime for f in files] or [time.time()]
         bag = {

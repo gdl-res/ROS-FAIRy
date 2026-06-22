@@ -140,6 +140,21 @@ No archiving happens here. Archiving is exclusively triggered by the operator vi
 
 All defined once in `watchdog.py`, importable by tests.
 
+## ROS 2 environment
+
+The service has no login shell, so it does **not** inherit a sourced ROS 2
+environment. Without `ros2` on `PATH` (and `AMENT_PREFIX_PATH`, `ROS_DISTRO`,
+`RMW_IMPLEMENTATION`, `ROS_DOMAIN_ID`, …) the graph/description harvest captures
+nothing and `ros_distro` is `None`. To avoid this, `ros2 fair setup` snapshots
+the operator's ROS environment (variables prefixed `ROS_`/`AMENT_`/`RMW_`/
+`COLCON_`, plus `PATH`, `LD_LIBRARY_PATH`, `PYTHONPATH`, `CMAKE_PREFIX_PATH`,
+and the DDS profile vars) into `/etc/fair-ros/watchdog.env`, which the unit
+loads via `EnvironmentFile=-` (optional, so a robot set up before this existed
+still starts and watches the spool). The operator must run setup with that
+environment preserved (e.g. `sudo -E ros2 fair setup`); setup warns if
+`ROS_DISTRO` is absent. Re-run setup to refresh the snapshot after a distro or
+DDS change.
+
 ## Error handling
 
 | Condition | Behaviour |

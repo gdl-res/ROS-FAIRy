@@ -22,12 +22,14 @@ setup(
         "rich>=13",
         "PyYAML>=6",
         "inotify_simple>=1.3",
+        # MCAP is rosbag2's default storage from Jazzy on; the watchdog needs it
+        # to read per-message timestamps for bag duration and topic health.
+        # The code still degrades gracefully if it is somehow absent.
+        "mcap",
     ],
     extras_require={
-        # mcap enables MCAP bag health analysis (and lets tests write/read
-        # real .mcap fixtures). Optional at runtime; degrades gracefully.
-        "test": ["pytest", "rocrate", "mcap"],
-        "dev": ["pytest", "rocrate", "mcap", "ruff", "mypy"],
+        "test": ["pytest", "rocrate"],
+        "dev": ["pytest", "rocrate", "ruff", "mypy"],
     },
     zip_safe=False,
     author="fair-ros contributors",

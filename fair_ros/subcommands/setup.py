@@ -28,6 +28,17 @@ SERVICE_NAME = "fair-ros-watchdog.service"
 GROUP_NAME = "fair-ros"
 MAX_ATTEMPTS = 3
 
+# The watchdog runs as a system service with no sourced ROS environment, so we
+# snapshot the operator's ROS environment here and load it via the unit's
+# EnvironmentFile. Capture every ROS/build-tool variable plus the search paths
+# ros2 and rclpy need to find their plugins and libraries.
+ROS_ENV_PREFIXES = ("ROS_", "AMENT_", "RMW_", "COLCON_")
+ROS_ENV_NAMES = (
+    "PATH", "LD_LIBRARY_PATH", "PYTHONPATH", "CMAKE_PREFIX_PATH",
+    "CYCLONEDDS_URI", "FASTRTPS_DEFAULT_PROFILES_FILE",
+    "FASTDDS_DEFAULT_PROFILES_FILE",
+)
+
 
 class SetupAborted(Exception):
     pass
@@ -190,7 +201,38 @@ def create_dirs() -> None:
                 pass
 
 
+def _capture_ros_environment() -> dict[str, str]:
+    """The ROS-relevant subset of the current environment."""
+    return {
+        key: val for key, val in os.environ.items()
+        if key in ROS_ENV_NAMES or key.startswith(ROS_ENV_PREFIXES)
+    }
+
+
+def write_watchdog_env(console: Console) -> None:
+    """Snapshot the ROS environment for the watchdog service.
+
+    Written as a systemd EnvironmentFile (``KEY=value`` per line). If ROS_DISTRO
+    is absent the operator didn't preserve their environment under sudo, so the
+    service would harvest nothing — warn loudly and tell them how to fix it.
+    """
+    env = _capture_ros_environment()
+    env_path = paths.watchdog_env_path()
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [f"{key}={env[key]}" for key in sorted(env)]
+    env_path.write_text("\n".join(lines) + ("\n" if lines else ""))
+    os.chmod(env_path, 0o644)
+    if "ROS_DISTRO" not in env:
+        console.print(
+            "[yellow]Warning: no ROS environment was captured for the "
+            "background service (ROS_DISTRO is unset). The watchdog won't be "
+            "able to record software versions or the robot description.\n"
+            "Re-run setup with your ROS environment preserved, e.g. "
+            "`sudo -E env \"PATH=$PATH\" ros2 fair setup`.[/yellow]")
+
+
 def install_service(console: Console) -> bool:
+    write_watchdog_env(console)
     unit_src = Path(__file__).resolve().parent.parent / "watchdog" / \
         SERVICE_NAME
     shutil.copy(unit_src, Path("/etc/systemd/system") / SERVICE_NAME)

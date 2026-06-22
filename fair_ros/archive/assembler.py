@@ -71,7 +71,7 @@ def _move_bag(src: Path, dest: Path,
 
 
 def _render_readme(record: MissionRecord, warnings: list[str]) -> str:
-    total_s = sum(b.duration_s for b in record.bags)
+    total_s = sum(b.duration_s or 0 for b in record.bags)
     total_bytes = sum(b.size_bytes for b in record.bags)
     lines = [
         f"# {record.intent.goal}",
@@ -86,9 +86,11 @@ def _render_readme(record: MissionRecord, warnings: list[str]) -> str:
     if record.robot:
         lines.append(f"- **Robot:** {record.robot.name} "
                      f"({record.robot.platform})")
+    length = (f"{total_s / 60:.0f} minutes"
+              if any(b.duration_s for b in record.bags) else "length unknown")
     lines += [
         f"- **Recordings:** {len(record.bags)}, "
-        f"{total_s / 60:.0f} minutes, {total_bytes / 1e9:.1f} GB",
+        f"{length}, {total_bytes / 1e9:.1f} GB",
     ]
     if record.intent.notes:
         lines += ["", f"**Notes:** {record.intent.notes}"]

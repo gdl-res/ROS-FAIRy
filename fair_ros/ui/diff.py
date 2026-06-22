@@ -134,8 +134,8 @@ def _diff_graph(a: MissionRecord, b: MissionRecord) -> list[tuple]:
 def _diff_recordings(a: MissionRecord, b: MissionRecord) -> list[tuple]:
     rows: list[tuple] = []
 
-    dur_a = sum(bag.duration_s for bag in a.bags)
-    dur_b = sum(bag.duration_s for bag in b.bags)
+    dur_a = sum(bag.duration_s or 0 for bag in a.bags)
+    dur_b = sum(bag.duration_s or 0 for bag in b.bags)
     if abs(dur_a - dur_b) > 1:
         rows.append(("Duration", humanize_duration(dur_a), humanize_duration(dur_b)))
 
