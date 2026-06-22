@@ -222,10 +222,13 @@ Default output: rich table, newest first.
 | Duration | humanised from `duration_s` |
 | Size | humanised from `size_bytes` |
 | ⚠ | `warning_count` (blank when 0) |
+| Data | `data_quality`: blank for `ok`/unset, `partial` (yellow) for `degraded`, `poor` (red) |
 
 Options:
 - `--operator <text>`, `--location <text>` — case-insensitive substring filters.
 - `--since <YYYY-MM-DD>`, `--until <YYYY-MM-DD>`.
+- `--quality {ok,degraded,poor}` — only missions with that data-quality verdict
+  (e.g. `--quality poor` to find the ones that need attention).
 - `--limit <n>` — default 20; footer line "Showing 20 of 134 missions" when
   truncated.
 - `--path` — adds the archive path column (for engineers copying data off).

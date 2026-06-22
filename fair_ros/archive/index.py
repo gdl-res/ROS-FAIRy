@@ -95,6 +95,7 @@ def insert(record: MissionRecord, archive_path: Path) -> None:
 
 def query(operator: str | None = None, location: str | None = None,
           since: str | None = None, until: str | None = None,
+          quality: str | None = None,
           limit: int = 20) -> tuple[list[dict[str, Any]], int]:
     """Filtered mission rows, newest first. Returns (rows, total_matching)."""
     where, params = [], []
@@ -104,6 +105,9 @@ def query(operator: str | None = None, location: str | None = None,
     if location:
         where.append("location LIKE ? COLLATE NOCASE")
         params.append(f"%{location}%")
+    if quality:
+        where.append("data_quality = ?")
+        params.append(quality)
     if since:
         where.append("created_at >= ?")
         params.append(since)
