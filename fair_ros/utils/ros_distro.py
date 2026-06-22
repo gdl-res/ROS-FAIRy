@@ -1,0 +1,73 @@
+"""ROS 2 distro detection and per-distro capability lookup.
+
+CLAUDE.md principle 5 keeps the core version-agnostic by using subprocess and
+environment introspection rather than per-distro code paths. The one thing that
+genuinely differs by distro and that the core must reason about is rosbag2's
+*default* storage format: Foxy–Iron default to sqlite3, Jazzy and later default
+to MCAP. When a bag's ``metadata.yaml`` omits its ``storage_identifier`` (older
+or hand-rolled bags), inferring the recording distro's default beats blindly
+assuming one format.
+
+This is a small data-driven registry, not a behaviour switch — unknown distros
+degrade to a conservative default and everything else stays subprocess-driven.
+
+Lives in ``utils`` (not ``harvest``) so both the harvest layer and ``utils``
+modules like ``topic_health`` can depend on it without reversing the layering.
+"""
+
+import os
+from dataclasses import dataclass
+
+SQLITE3 = "sqlite3"
+MCAP = "mcap"
+
+# Conservative fallback for an unknown / unsourced distro. sqlite3 is the only
+# format the timestamp reader supports today, so guessing it degrades to a
+# harmless empty result if wrong (no .db3 found) rather than mis-parsing.
+DEFAULT_STORAGE_FALLBACK = SQLITE3
+
+# rosbag2 switched its default storage plugin from sqlite3 to MCAP in Jazzy.
+_DEFAULT_STORAGE: dict[str, str] = {
+    "foxy": SQLITE3,
+    "galactic": SQLITE3,
+    "humble": SQLITE3,
+    "iron": SQLITE3,
+    "jazzy": MCAP,
+    "kilted": MCAP,
+    "rolling": MCAP,
+}
+
+
+@dataclass(frozen=True)
+class DistroCaps:
+    """What the core needs to know about a ROS 2 distro."""
+
+    name: str | None
+    default_storage: str
+
+
+def detect() -> str | None:
+    """The active ROS 2 distro from ``$ROS_DISTRO``, or None if unsourced."""
+    distro = os.environ.get("ROS_DISTRO")
+    if not distro or not distro.strip():
+        return None
+    return distro.strip().lower()
+
+
+def default_storage(distro: str | None = None) -> str:
+    """rosbag2's default ``storage_identifier`` for ``distro``.
+
+    Falls back to the detected distro, then to ``DEFAULT_STORAGE_FALLBACK``.
+    """
+    key = (distro or detect() or "").lower()
+    return _DEFAULT_STORAGE.get(key, DEFAULT_STORAGE_FALLBACK)
+
+
+def capabilities(distro: str | None = None) -> DistroCaps:
+    """Capability bundle for ``distro`` (detected if not given)."""
+    distro = distro or detect()
+    key = (distro or "").lower()
+    return DistroCaps(
+        name=distro,
+        default_storage=_DEFAULT_STORAGE.get(key, DEFAULT_STORAGE_FALLBACK),
+    )

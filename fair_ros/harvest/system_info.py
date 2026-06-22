@@ -1,10 +1,11 @@
 """Host-level facts: hostname, kernel, arch, ROS distro, installed ROS debs."""
 
-import os
 import platform
 import socket
 import subprocess
 from typing import Any
+
+from fair_ros.utils import ros_distro
 
 DPKG_TIMEOUT_S = 10
 
@@ -34,6 +35,6 @@ def harvest() -> dict[str, Any]:
         "hostname": socket.gethostname(),
         "kernel": f"{uname.system} {uname.release}",
         "arch": uname.machine,
-        "ros_distro": os.environ.get("ROS_DISTRO"),
+        "ros_distro": ros_distro.detect(),
         "apt_ros_versions": _ros_deb_versions(),
     }

@@ -17,7 +17,7 @@ from typing import Any
 
 import yaml
 
-from fair_ros.utils import bag_storage
+from fair_ros.utils import bag_storage, ros_distro
 
 GAP_THRESHOLD_S = 1.0
 # A gap must also dwarf the topic's own cadence, or slow topics (0.2 Hz
@@ -71,7 +71,11 @@ def parse_bag_metadata(bag_dir: Path) -> dict[str, Any] | None:
             "message_count": entry.get("message_count", 0),
         })
     return {
-        "storage_identifier": info.get("storage_identifier", "sqlite3"),
+        # rosbag2 normally records the format; when it is absent (old or
+        # hand-rolled bags) infer the recording distro's default rather than
+        # blindly assuming sqlite3.
+        "storage_identifier": info.get("storage_identifier")
+        or ros_distro.default_storage(),
         "start_s": start_ns / 1e9,
         "duration_s": duration_ns / 1e9,
         "message_count": info.get("message_count", 0),

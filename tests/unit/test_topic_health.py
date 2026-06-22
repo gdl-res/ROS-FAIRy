@@ -112,3 +112,19 @@ def test_mcap_bag_metadata_checks_only(tmp_path):
         "/depth": _steady(T0, T0 + 100, 5),
     }, storage="mcap")
     assert topic_health.analyse_bag(bag, SENSORS) == []
+
+
+def test_metadata_without_storage_id_infers_from_distro(tmp_path, monkeypatch):
+    """A bag whose metadata omits storage_identifier falls back to the
+    recording distro's default rather than blindly assuming sqlite3."""
+    bag = make_bag(tmp_path / "bag", {"/fix": [T0, T0 + 1]})
+    meta_path = bag / "metadata.yaml"
+    lines = [ln for ln in meta_path.read_text().splitlines()
+             if "storage_identifier" not in ln]
+    meta_path.write_text("\n".join(lines))
+
+    monkeypatch.setenv("ROS_DISTRO", "jazzy")
+    assert topic_health.parse_bag_metadata(bag)["storage_identifier"] == "mcap"
+    monkeypatch.setenv("ROS_DISTRO", "humble")
+    assert topic_health.parse_bag_metadata(bag)["storage_identifier"] == \
+        "sqlite3"

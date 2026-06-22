@@ -173,7 +173,7 @@ watchdog FINALISING step from rosbag2's own `metadata.yaml` plus
 | Field | Type | Req | Conf | Source | Description |
 |---|---|---|---|---|---|
 | `path` | `str` | yes | auto | watchdog | Relative path inside the crate after assembly (`bags/<dir>`); spool-absolute before. |
-| `storage_format` | `str` | yes | auto | bag `metadata.yaml` | `sqlite3` or `mcap`. |
+| `storage_format` | `str` | yes | auto | bag `metadata.yaml` | `sqlite3` or `mcap`. When `metadata.yaml` omits it, inferred from the recording distro via `utils/ros_distro.default_storage()` (Jazzy+ → `mcap`, Foxy–Iron → `sqlite3`). |
 | `size_bytes` | `int` | yes | auto | filesystem | Total directory size. |
 | `start_time` | `datetime` | yes | auto | bag metadata | First message time. |
 | `end_time` | `datetime` | yes | auto | bag metadata | Last message time. |

@@ -94,6 +94,7 @@ fair-ros/
 │       ├── paths.py                 ← canonical paths (spool, archive, config)
 │       ├── fsio.py                  ← atomic JSON writes, directory sizing
 │       ├── bag_storage.py           ← pluggable rosbag2 storage readers (sqlite3; mcap stub)
+│       ├── ros_distro.py            ← distro detection + per-distro capabilities (default storage)
 │       └── topic_health.py          ← gap detection on topic timestamps
 ├── systemd/
 │   └── fair-ros-watchdog.service
