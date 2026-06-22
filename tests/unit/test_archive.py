@@ -202,6 +202,19 @@ def test_ro_crate_document(fair_dirs):
     assert first_var["name"] == "/fix"
     assert first_var["value"] == 6001
 
+    # bag files are File entities with sha256, referenced by the bag's hasPart,
+    # and the digests match mission_record.json's bags[].file_sha256
+    recorded = record.bags[0].file_sha256
+    assert recorded, "expected per-file bag checksums"
+    parts = {p["@id"] for p in bag["hasPart"]}
+    for rel, digest in recorded.items():
+        file_id = f"bags/rosbag2_0/{rel}"
+        assert file_id in parts
+        assert by_id[file_id]["@type"] == "File"
+        assert by_id[file_id]["sha256"] == digest
+    assert by_id["bags/rosbag2_0/rosbag2_0_0.db3"]["encodingFormat"] == \
+        "application/x-sqlite3"
+
     # confidence markers share one hoisted entity, referenced by user fields
     assert by_id["#operator"]["additionalProperty"] == {"@id": "#confidence-user"}
     assert by_id["#confidence-user"]["value"] == "user"

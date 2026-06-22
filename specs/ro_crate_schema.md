@@ -35,6 +35,7 @@ SSN/SOSA** for sensors and observation context. The file is generated from the
 | Python runtime | `SoftwareApplication` | `#python-runtime` | `software.python_env` |
 | Each container image | `SoftwareApplication` | `#container-<name>` | `software.docker_containers[]` |
 | Each bag dir | `Dataset` | `bags/<dir>/` (trailing slash) | `bags[]` |
+| Each bag file | `File` (+ `sha256`) | `bags/<dir>/<file>` | `bags[].file_sha256` |
 | Each plain file | `File` | crate-relative path | manifest/cal/docker files |
 | Each PropertyValue | `PropertyValue` | `#…` (see below) | sensor facts, bag topics, confidence, python props |
 
@@ -99,6 +100,14 @@ format from the bag), `variableMeasured`: a list of **references** to hoisted
 `description` = ROS type, `value` = message count).
 Health warnings: each becomes a `comment` string on the bag Dataset, using the
 pre-rendered `plain_text`.
+Each file inside the bag (storage chunks + `metadata.yaml`) is emitted as a
+`File` entity (`@id` = `bags/<dir>/<file>`) carrying a `sha256` from
+`bags[].file_sha256` (recorded at archive time), and listed in the bag
+Dataset's `hasPart` — so the recording's bytes are verifiable by any RO-Crate
+consumer, not only `ros2 fair verify`. Pre-1.0 archives without recorded
+checksums emit no bag `File` entities and no `hasPart`. `encodingFormat` per
+file: `.mcap` → `application/x-mcap`, `.db3` → `application/x-sqlite3`,
+`.yaml`/`.yml` → `application/yaml`, else `application/octet-stream`.
 
 **Software** — `#ros2`: `name: "ROS 2"`, `version: software.ros_distro`,
 `url: "https://ros.org"`. `#python-runtime` (emitted only when
@@ -275,7 +284,11 @@ It is referenced only where the distinction matters: `#operator`, `#place`, and
         { "@id": "#bag1-measure-1" },
         { "@id": "#bag1-measure-2" }
       ],
-      "comment": "GPS signal was lost for 4 minutes, starting 12 minutes in."
+      "comment": "GPS signal was lost for 4 minutes, starting 12 minutes in.",
+      "hasPart": [
+        { "@id": "bags/rosbag2_2026_06_12-14_02_58/metadata.yaml" },
+        { "@id": "bags/rosbag2_2026_06_12-14_02_58/rosbag2_2026_06_12-14_02_58_0.db3" }
+      ]
     },
     { "@id": "mission_record.json", "@type": "File", "name": "Mission record (machine-readable)", "encodingFormat": "application/json" },
     { "@id": "README.md", "@type": "File", "name": "Mission summary", "encodingFormat": "text/markdown" },
@@ -283,6 +296,8 @@ It is referenced only where the distinction matters: `#operator`, `#place`, and
     { "@id": "harvest/robot_description.urdf", "@type": "File", "name": "Robot description (URDF)", "encodingFormat": "application/xml" },
     { "@id": "calibrations/gps0_cal.yaml", "@type": "File", "name": "Calibration: gps0_cal", "encodingFormat": "application/yaml", "sha256": "c3ab8ff13720e8ad9047dd39466b3c8974e592c2fa383d4a3960714caef0c4f2" },
     { "@id": "docker/containers.json", "@type": "File", "name": "Container inventory", "encodingFormat": "application/json" },
+    { "@id": "bags/rosbag2_2026_06_12-14_02_58/metadata.yaml", "@type": "File", "name": "metadata.yaml", "encodingFormat": "application/yaml", "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" },
+    { "@id": "bags/rosbag2_2026_06_12-14_02_58/rosbag2_2026_06_12-14_02_58_0.db3", "@type": "File", "name": "rosbag2_2026_06_12-14_02_58_0.db3", "encodingFormat": "application/x-sqlite3", "sha256": "60303ae22b998861bce3b28f33eec1be758a213c86c93c076dbe9f558c11c752" },
 
     { "@id": "#confidence-user", "@type": "PropertyValue", "name": "fair-ros:confidence", "value": "user" },
     { "@id": "#sensor-gps0-topic", "@type": "PropertyValue", "name": "topic", "value": "/fix" },
@@ -304,8 +319,9 @@ Note: `sha256` on File entities uses the term from the RO-Crate 1.1 context
 ## Generation rules for `ro_crate.py`
 
 - Deterministic output: entities sorted as in the example (descriptor, root,
-  people/org/place, robot, sensors, mission, software, bags, files, then all
-  hoisted `PropertyValue` entities in creation order); keys in insertion order;
+  people/org/place, robot, sensors, mission, software, bags, files, bag files,
+  then all hoisted `PropertyValue` entities in creation order); keys in
+  insertion order;
   2-space indent; UTF-8; trailing newline.
 - Optional `MissionRecord` fields that are `None`/empty produce **no** property
   (never `null` in the JSON-LD).

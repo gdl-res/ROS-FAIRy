@@ -17,6 +17,13 @@ _ENCODING = {
     "mcap": "application/x-mcap",
 }
 
+_FILE_ENCODING = {
+    ".mcap": "application/x-mcap",
+    ".db3": "application/x-sqlite3",
+    ".yaml": "application/yaml",
+    ".yml": "application/yaml",
+}
+
 _CONFIDENCE_USER_ID = "#confidence-user"
 
 
@@ -222,9 +229,11 @@ def build(record: MissionRecord, extra_files: list[dict] | None = None,
             entity["identifier"] = container.digest
         graph.append(entity)
 
+    bag_file_entities: list[dict] = []
     for i, bag in enumerate(record.bags, start=1):
+        bag_dir_id = bag.path.rstrip("/")
         entity = {
-            "@id": bag.path.rstrip("/") + "/",
+            "@id": bag_dir_id + "/",
             "@type": "Dataset",
             "name": f"Recording {i}",
             "contentSize": str(bag.size_bytes),
@@ -243,9 +252,27 @@ def build(record: MissionRecord, extra_files: list[dict] | None = None,
             entity["comment"] = comments[0]
         elif comments:
             entity["comment"] = comments
+        # Per-file checksums (recorded at archive time) become File entities
+        # with sha256, listed under the bag Dataset's hasPart. This makes the
+        # bag bytes verifiable by any RO-Crate tool, not just `ros2 fair verify`.
+        parts = []
+        for rel, digest in sorted(bag.file_sha256.items()):
+            file_id = f"{bag_dir_id}/{rel}"
+            bag_file_entities.append({
+                "@id": file_id,
+                "@type": "File",
+                "name": Path(rel).name,
+                "encodingFormat": _FILE_ENCODING.get(
+                    Path(rel).suffix, "application/octet-stream"),
+                "sha256": digest,
+            })
+            parts.append({"@id": file_id})
+        if parts:
+            entity["hasPart"] = parts
         graph.append(entity)
 
     graph.extend(file_entities)
+    graph.extend(bag_file_entities)
     graph.extend(pv_entities)
 
     return {
