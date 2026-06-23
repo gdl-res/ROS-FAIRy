@@ -317,7 +317,8 @@ def assemble(record: MissionRecord, harvest_doc: dict[str, Any],
 
     # Step 7: clear spool context files
     for leftover in (paths.harvest_json_path(),
-                     paths.mission_context_path()):
+                     paths.mission_context_path(),
+                     paths.session_env_path()):
         try:
             leftover.unlink(missing_ok=True)
         except OSError:

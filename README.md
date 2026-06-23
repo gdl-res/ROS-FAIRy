@@ -64,10 +64,12 @@ The tool actively prevents the field failures that produce useless data:
   discovering problems after.
 - **Service-env reconciliation** — the watchdog starts from a frozen ROS-env
   snapshot taken at `setup`, which goes blind if you later record under a
-  different domain, RMW, or overlay. `mission_start` / `mission_record` hand the
-  live recording shell's ROS environment to the watchdog, so its background
-  harvest always sees the same ROS graph the recorder does — no more empty-graph
-  archives from env drift.
+  different domain or RMW. `mission_start` / `mission_record` hand the live
+  recording shell's DDS discovery settings (domain, RMW) to the watchdog, so its
+  background harvest always sees the same ROS graph the recorder does — no more
+  empty-graph archives from env drift. (Only discovery keys are adopted from
+  that group-writable handoff, never loader paths, so it can't be used to run
+  code as the root service.)
 - **Clock guardrail** — an unsynchronised system clock stamps messages near the
   epoch, making recordings unplayable. `mission_record` refuses to record on a
   bad clock unless you confirm; `mission_start` warns.

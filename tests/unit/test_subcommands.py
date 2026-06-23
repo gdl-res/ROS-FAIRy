@@ -183,6 +183,18 @@ def test_mission_close_discard_flow(fair_dirs):
     assert not paths.harvest_json_path().exists()
 
 
+def test_mission_close_discard_clears_session_env(fair_dirs):
+    _spool(fair_dirs)
+    from fair_ros.utils import ros_env
+    ros_env.write_file(paths.session_env_path(), {"ROS_DOMAIN_ID": "7"})
+    with mock.patch.object(mission_close.review, "confirm_save",
+                           return_value="discard"):
+        assert mission_close.run(ARGS, console=_console()) == 0
+    # A stale session.env would otherwise be adopted by the next, unrelated
+    # harvest, re-introducing the drift this guards against (#29).
+    assert not paths.session_env_path().exists()
+
+
 def test_mission_close_keep_flow(fair_dirs):
     _spool(fair_dirs)
     console = _console()

@@ -326,18 +326,24 @@ class Watchdog:
             self._harvest_once()
 
     def _apply_session_env(self) -> None:
-        """Adopt the live recording shell's ROS env (issue #29).
+        """Adopt the live recording shell's DDS discovery env (issue #29).
 
         ``mission_start`` / ``mission_record`` drop the recorder's ROS
-        environment in the spool; applying it over our own (which came from the
-        possibly-stale ``watchdog.env`` snapshot) puts the harvest's ``ros2``
-        subprocesses and rclpy on the same DDS partition / overlay as the
-        session actually recording. No-op when the file is absent.
+        environment in the spool; adopting its DDS discovery keys (domain, RMW,
+        ...) over our own (which came from the possibly-stale ``watchdog.env``
+        snapshot) puts the harvest's ``ros2`` subprocesses and rclpy on the same
+        partition as the session actually recording.
+
+        Only :data:`ros_env.SESSION_ADOPT_KEYS` are honoured. ``session.env`` is
+        group-writable and this process is root, so loader paths from it are
+        never applied — they would be a privilege-escalation vector. No-op when
+        the file is absent or carries no discovery keys.
         """
-        env = ros_env.read_file(paths.session_env_path())
+        env = ros_env.safe_session_env(ros_env.read_file(paths.session_env_path()))
         if env:
             os.environ.update(env)
-            log.info("applied recording session ROS env (%d vars)", len(env))
+            log.info("adopted recording session DDS env: %s",
+                     ", ".join(sorted(env)))
 
     def _harvest_once(self) -> None:
         with self._harvest_lock:

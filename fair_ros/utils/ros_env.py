@@ -32,6 +32,28 @@ ROS_ENV_NAMES = (
 # the recorder (an empty graph even though everything is "running").
 DISCOVERY_KEYS = ("ROS_DOMAIN_ID", "RMW_IMPLEMENTATION")
 
+# The only keys the watchdog adopts at *runtime* from <spool>/session.env. That
+# file is group-writable and the watchdog runs as root, so honouring loader
+# paths (PATH / LD_LIBRARY_PATH / PYTHONPATH / AMENT_PREFIX_PATH ...) from it
+# would let any spool writer run code as root. These keys only steer DDS
+# discovery — which partition the harvest sees — and cannot load code. A missing
+# or unusable base ROS environment is a setup/doctor failure, not something to
+# paper over by trusting the spool.
+SESSION_ADOPT_KEYS = (
+    "ROS_DOMAIN_ID", "RMW_IMPLEMENTATION", "ROS_LOCALHOST_ONLY",
+    "ROS_AUTOMATIC_DISCOVERY_RANGE", "ROS_STATIC_PEERS",
+)
+
+
+def safe_session_env(env: Mapping[str, str]) -> dict[str, str]:
+    """The subset of a (possibly untrusted) session.env safe to adopt as root.
+
+    Restricted to :data:`SESSION_ADOPT_KEYS`; deliberately drops every loader
+    path so a group-writable ``session.env`` cannot inject libraries/modules
+    into the root watchdog process.
+    """
+    return {key: env[key] for key in SESSION_ADOPT_KEYS if key in env}
+
 
 def capture(environ: Mapping[str, str] | None = None) -> dict[str, str]:
     """The ROS-relevant subset of an environment (defaults to the process)."""

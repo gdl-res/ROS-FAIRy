@@ -58,11 +58,15 @@ Trigger: first storage file (`.db3`/`.mcap`) created inside a new bag directory 
 (`metadata.yaml` alone does not trigger — rosbag2 writes it only on close.)
 
 On entry, before the pipeline, the watchdog adopts the **live recording shell's**
-ROS environment if `<spool>/session.env` exists (written by `mission_start` /
-`mission_record`), overlaying its own environment. The watchdog's own env is the
-frozen `watchdog.env` snapshot from setup, which goes blind under domain / RMW /
-overlay drift; adopting the recorder's env keeps the harvest's `ros2`
-subprocesses and rclpy on the same DDS partition as the session being recorded.
+DDS discovery settings if `<spool>/session.env` exists (written by
+`mission_start` / `mission_record`), overlaying its own environment. The
+watchdog's own env is the frozen `watchdog.env` snapshot from setup, which goes
+blind under domain / RMW drift; adopting the recorder's discovery keys keeps the
+harvest's `ros2` subprocesses and rclpy on the same DDS partition as the session
+being recorded. Only `ros_env.SESSION_ADOPT_KEYS` (domain, RMW, discovery range
+/ peers) are adopted — `session.env` is group-writable and the watchdog runs as
+root, so loader paths (`PATH` / `LD_LIBRARY_PATH` / `PYTHONPATH` / overlay) are
+never trusted from it; the base ROS install comes only from `watchdog.env`.
 
 Then run the harvest pipeline **in this order** (cheap and local first, so a
 broken ROS graph cannot delay capturing what is capturable):

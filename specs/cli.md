@@ -103,10 +103,15 @@ mission_record".
 shell's ROS environment to `<spool>/session.env`. The recorder always has the
 correct environment (it *is* the operator's live shell); the watchdog only has
 the frozen `watchdog.env` snapshot, which goes blind if the operator records
-under a different `ROS_DOMAIN_ID` / `RMW_IMPLEMENTATION` / overlay. The watchdog
-applies `session.env` over its own environment at harvest time, so its harvest
-always lands on the same DDS partition as the session actually recording
-(closes the drift that produced empty-graph archives).
+under a different `ROS_DOMAIN_ID` / `RMW_IMPLEMENTATION`. At harvest time the
+watchdog adopts `session.env`'s DDS discovery keys
+(`ros_env.SESSION_ADOPT_KEYS`) over its own, so its harvest lands on the same
+partition as the session actually recording (closes the drift that produced
+empty-graph archives). `session.env` is group-writable and the watchdog runs as
+root, so **only** discovery keys are adopted — never `PATH` / `LD_LIBRARY_PATH`
+/ `PYTHONPATH` / overlay paths, which would be a privilege-escalation vector;
+the base ROS install comes only from the root-owned `watchdog.env`. The file is
+removed when the spool is cleared at `mission_close`.
 
 ---
 

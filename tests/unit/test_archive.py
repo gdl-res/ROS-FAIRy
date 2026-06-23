@@ -107,6 +107,8 @@ def test_sanitise():
 
 def test_assemble_full_crate(fair_dirs):
     harvest, context = _spool(fair_dirs)
+    from fair_ros.utils import ros_env
+    ros_env.write_file(paths.session_env_path(), {"ROS_DOMAIN_ID": "7"})
     record = builder.build(harvest, context)
     final = assembler.assemble(record, harvest)
 
@@ -138,9 +140,10 @@ def test_assemble_full_crate(fair_dirs):
     assert saved["calibrations"][0]["archived_path"] == \
         "calibrations/gps0.yaml"
     assert len(saved["calibrations"][0]["sha256"]) == 64
-    # spool context cleared
+    # spool context cleared (incl. the recording-session env handoff)
     assert not paths.harvest_json_path().exists()
     assert not paths.mission_context_path().exists()
+    assert not paths.session_env_path().exists()
     # indexed
     rows, total = index.query()
     assert total == 1

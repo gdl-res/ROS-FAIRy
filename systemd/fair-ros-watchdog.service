@@ -10,9 +10,10 @@ Type=simple
 # PATH and the graph/description harvest fails. `-` makes it optional so the
 # watchdog still starts (and watches the spool) on a robot set up before this
 # file existed. Re-run `ros2 fair setup` to (re)generate it. At mission time the
-# watchdog also adopts the live recording shell's ROS env from
-# <spool>/session.env (written by mission_start/mission_record), so a domain or
-# RMW that drifted from this frozen snapshot still harvests the right graph.
+# watchdog also adopts the recording shell's DDS discovery settings (domain,
+# RMW) from <spool>/session.env (written by mission_start/mission_record), so a
+# domain or RMW that drifted from this frozen snapshot still harvests the right
+# graph. Loader paths from that group-writable file are never trusted.
 EnvironmentFile=-/etc/fair-ros/watchdog.env
 ExecStart=/usr/bin/python3 -m fair_ros.watchdog.watchdog
 Restart=always

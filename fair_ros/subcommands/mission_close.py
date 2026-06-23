@@ -52,7 +52,8 @@ def _discard_spool() -> None:
     if paths.bags_dir().is_dir():
         for bag in paths.bags_dir().glob("*"):
             shutil.rmtree(bag, ignore_errors=True)
-    for f in (paths.harvest_json_path(), paths.mission_context_path()):
+    for f in (paths.harvest_json_path(), paths.mission_context_path(),
+              paths.session_env_path()):
         f.unlink(missing_ok=True)
 
 
