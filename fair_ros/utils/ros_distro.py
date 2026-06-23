@@ -54,6 +54,25 @@ def detect() -> str | None:
     return distro.strip().lower()
 
 
+def infer_from_packages(package_names) -> str | None:
+    """Best-effort distro from installed ``ros-<distro>-*`` package names.
+
+    ``$ROS_DISTRO`` is the source of truth, but the watchdog often runs
+    unsourced (CLAUDE.md: harvest may not see what the recorder does), so
+    ``detect`` returns None even on a fully-installed robot. The apt inventory
+    still names the distro — ``ros-jazzy-rclcpp`` and friends — so fall back to
+    the most common recognised distro prefix among the installed packages.
+    """
+    counts: dict[str, int] = {}
+    for name in package_names or ():
+        parts = name.split("-")
+        if len(parts) >= 2 and parts[0] == "ros" and parts[1] in _DEFAULT_STORAGE:
+            counts[parts[1]] = counts.get(parts[1], 0) + 1
+    if not counts:
+        return None
+    return max(counts, key=lambda d: counts[d])
+
+
 def default_storage(distro: str | None = None) -> str:
     """rosbag2's default ``storage_identifier`` for ``distro``.
 

@@ -44,7 +44,9 @@ class Sensor(_Model):
     topic: str
     frame_id: str | None = None
     calibration_ref: str | None = None
-    detected_at_start: bool = False
+    # True = seen publishing, False = live graph confirmed it absent,
+    # None = couldn't tell (the harvest couldn't reach the ROS graph).
+    detected_at_start: bool | None = None
 
 
 class DockerContainer(_Model):

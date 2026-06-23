@@ -31,10 +31,14 @@ def _ros_deb_versions() -> dict[str, str]:
 
 def harvest() -> dict[str, Any]:
     uname = platform.uname()
+    apt_ros_versions = _ros_deb_versions()
     return {
         "hostname": socket.gethostname(),
         "kernel": f"{uname.system} {uname.release}",
         "arch": uname.machine,
-        "ros_distro": ros_distro.detect(),
-        "apt_ros_versions": _ros_deb_versions(),
+        # The watchdog often runs unsourced, so $ROS_DISTRO is empty; fall back
+        # to inferring the distro from the installed ros-<distro>-* packages.
+        "ros_distro": ros_distro.detect()
+        or ros_distro.infer_from_packages(apt_ros_versions),
+        "apt_ros_versions": apt_ros_versions,
     }

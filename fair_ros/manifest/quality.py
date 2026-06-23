@@ -54,9 +54,11 @@ def assess(record: MissionRecord, harvest: dict | None = None) -> Quality:
         major.append("This robot hasn't been set up, so there's no robot or "
                      "sensor information.")
 
-    # Declared sensors that weren't seen at start.
+    # Declared sensors the live graph confirmed absent at start. Sensors with
+    # unknown liveness (None — graph unreachable) are not counted here; ones that
+    # recorded no data are caught by the never_published check below.
     if record.sensors:
-        not_detected = [s for s in record.sensors if not s.detected_at_start]
+        not_detected = [s for s in record.sensors if s.detected_at_start is False]
         if not_detected and len(not_detected) == len(record.sensors):
             minor.append("None of the declared sensors were detected when "
                          "recording started.")

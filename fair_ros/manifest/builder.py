@@ -82,11 +82,16 @@ def compose_harvest(identity: dict | None, system: dict | None,
     py = python_env or {}
     hw = hardware_devices or {}
 
+    # Sensor liveness comes from the live graph, but only if we actually reached
+    # it. When the graph harvest failed we genuinely don't know — mark it
+    # unknown (None) rather than falsely claiming every sensor was absent
+    # (recorded bags later upgrade this; see reconcile_sensor_detection).
     sensors = []
+    graph_reachable = harvest_status.get("ros_graph") == "ok"
     live_topics = {t["name"] for t in graph.get("topics", [])}
     for sensor in identity.get("sensors", []):
-        sensors.append({**sensor,
-                        "detected_at_start": sensor["topic"] in live_topics})
+        detected = sensor["topic"] in live_topics if graph_reachable else None
+        sensors.append({**sensor, "detected_at_start": detected})
 
     return {
         "robot": identity.get("robot"),
@@ -131,6 +136,26 @@ def compose_harvest(identity: dict | None, system: dict | None,
             "dmesg_usb": hw.get("dmesg_usb"),
         },
     }
+
+
+def reconcile_sensor_detection(harvest: dict | None) -> None:
+    """Upgrade ``detected_at_start`` with recorded-bag evidence, in place.
+
+    Liveness is sampled from the live ROS graph at mission start, but the
+    harvest process often can't see the graph the recorder can (issue #26): every
+    sensor then looks not-detected even though the bag proves it was publishing.
+    Recorded topics are ground truth — a sensor whose topic carries messages in
+    any bag was clearly running, so mark it detected. Sensors with no recorded
+    data are left as the graph saw them (False = confirmed absent, None =
+    graph unreachable, so still unknown).
+    """
+    if not harvest:
+        return
+    recorded = {t["name"] for bag in harvest.get("bags", [])
+                for t in bag.get("topics", []) if (t.get("message_count") or 0) > 0}
+    for sensor in harvest.get("sensors", []):
+        if sensor.get("topic") in recorded:
+            sensor["detected_at_start"] = True
 
 
 def load_spool() -> tuple[dict | None, dict | None]:
@@ -235,7 +260,11 @@ def harvest_level_warnings(harvest: dict | None) -> list[str]:
         warnings.append("Some software containers couldn't be pinned to an "
                         "exact version.")
     for sensor in harvest.get("sensors", []):
-        if not sensor.get("detected_at_start"):
+        # Only warn when the live graph actually confirmed the sensor absent.
+        # ``None`` means we couldn't reach the graph to check — don't accuse a
+        # sensor of being down when a recorded bag may prove otherwise. A
+        # sensor that recorded no data at all is flagged from bag health instead.
+        if sensor.get("detected_at_start") is False:
             warnings.append(f"{sensor['make_model']} didn't seem to be "
                             f"running when the recording started.")
     return warnings

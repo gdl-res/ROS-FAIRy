@@ -158,9 +158,10 @@ def build(record: MissionRecord, extra_files: list[dict] | None = None,
         if sensor.frame_id:
             props.append(
                 _pv(f"#sensor-{sid}-frame_id", "frame_id", sensor.frame_id))
+        detected = ("unknown" if sensor.detected_at_start is None
+                    else str(sensor.detected_at_start).lower())
         props.append(_pv(f"#sensor-{sid}-detected_at_start",
-                         "detected_at_start",
-                         str(sensor.detected_at_start).lower()))
+                         "detected_at_start", detected))
         sensor_entity: dict = {
             "@id": f"#sensor-{sid}",
             "@type": "sosa:Sensor",

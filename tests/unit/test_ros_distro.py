@@ -42,3 +42,15 @@ def test_capabilities(monkeypatch):
     caps = ros_distro.capabilities()
     assert caps.name == "jazzy"
     assert caps.default_storage == "mcap"
+
+
+def test_infer_from_packages_picks_most_common_distro():
+    pkgs = ["ros-jazzy-rclcpp", "ros-jazzy-rclpy", "ros-jazzy-nav2-msgs",
+            "ros-humble-rosbag2", "ros-dev-tools", "python3-colcon"]
+    assert ros_distro.infer_from_packages(pkgs) == "jazzy"
+
+
+def test_infer_from_packages_none_when_no_distro_packages():
+    assert ros_distro.infer_from_packages(["ros-dev-tools", "vim"]) is None
+    assert ros_distro.infer_from_packages([]) is None
+    assert ros_distro.infer_from_packages(None) is None
