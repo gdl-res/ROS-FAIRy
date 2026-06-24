@@ -44,6 +44,8 @@ safe to run anywhere.
 | `test_ros_graph_harvest_sees_live_node` | `ros_graph.harvest()` sees `talker` + `/chatter` | starts/stops a `talker` |
 | `test_ros_descriptions_captures_latched_urdf` | rclpy harvest reads a latched `/robot_description` | publishes a tiny URDF itself |
 | `test_full_record_harvest_archive_verify` | real bag → real harvest → crate → `verify` passes | records ~5 s of `/chatter`; the most environment-sensitive |
+| `test_recorder_scan_finds_live_recording` | the `/proc` scan locates a real `ros2 bag record` running outside the spool | records `/chatter` into a temp dir; asserts the resolved output dir + pid |
+| `test_watchdog_poller_detects_and_finalises_foreign` | the watchdog's poller adopts a recording started outside `mission_record`, harvests it, and finalises it as a `detected` bag in place | drives a real `Watchdog` (real inotify + `/proc` scan) over a live `ros2 bag record`; the most timing-sensitive |
 
 ## Safety / side effects
 

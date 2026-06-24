@@ -30,7 +30,8 @@ from fair_ros.harvest import ros_descriptions, ros_graph
 from fair_ros.manifest import builder
 from fair_ros.subcommands import verify
 from fair_ros.utils import fsio, paths
-from fair_ros.watchdog import watchdog
+from fair_ros.watchdog import recorder_scan, watchdog
+from fair_ros.watchdog.watchdog import IDLE, RECORDING, Watchdog
 
 pytestmark = pytest.mark.ros
 
@@ -188,3 +189,56 @@ def test_full_record_harvest_archive_verify(talker, fair_dirs):
     assert not failures, failures
     # the bag came from real `ros2 bag record`, so it carries per-file hashes
     assert record.bags[0].file_sha256
+
+
+def _wait_for_scan(bag_dir, timeout: float = 20) -> dict | None:
+    """Poll recorder_scan until it reports a recorder writing to bag_dir."""
+    want = bag_dir.resolve()
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for rec in recorder_scan.scan():
+            if rec["output_dir"] == want:
+                return rec
+        time.sleep(0.5)
+    return None
+
+
+def test_recorder_scan_finds_live_recording(talker, tmp_path):
+    """The /proc scan locates a real `ros2 bag record` running outside the spool."""
+    bag_dir = tmp_path / "ext_run"
+    with _background(["ros2", "bag", "record", "-o", str(bag_dir), "/chatter"]):
+        found = _wait_for_scan(bag_dir)
+    assert found is not None, "recorder_scan did not detect the live recording"
+    assert found["output_dir"] == bag_dir.resolve()
+    assert found["pid"] > 0
+
+
+def test_watchdog_poller_detects_and_finalises_foreign(talker, tmp_path,
+                                                       fair_dirs):
+    """End-to-end live: the watchdog's poller adopts a recording started outside
+    mission_record, harvests it, and finalises it as a `detected` bag in place."""
+    (fair_dirs["cfg"] / "robot_identity.yaml").write_text(_IDENTITY_YAML)
+    bag_dir = (tmp_path / "ext_live").resolve()
+
+    dog = Watchdog(harvest_in_thread=False)  # real inotify, /proc scan, clock
+    dog.start()
+    try:
+        with _background(["ros2", "bag", "record",
+                          "-o", str(bag_dir), "/chatter"]):
+            deadline = time.monotonic() + 25
+            while time.monotonic() < deadline and dog.state != RECORDING:
+                dog.step(timeout_ms=200)
+            assert dog.state == RECORDING, "poller never detected the recording"
+            assert dog.active_bag_dir == bag_dir
+        # recorder stopped (SIGINT) -> metadata.yaml flushed; let it finalise.
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and dog.state != IDLE:
+            dog.step(timeout_ms=200)
+    finally:
+        dog.ino.close()
+
+    assert dog.state == IDLE
+    harvest, _ = builder.load_spool()
+    assert harvest["bags"][0]["source"] == "detected"
+    assert harvest["bags"][0]["path"] == str(bag_dir)
+    assert bag_dir.is_dir()  # referenced in place, never moved into the spool
