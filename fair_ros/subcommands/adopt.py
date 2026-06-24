@@ -10,28 +10,106 @@ It runs the same processing the watchdog's FINALISING step would (parse
 ``metadata.yaml``, topic-health analysis) and appends a ``source="adopted"`` bag
 entry to ``harvest.json``, referenced in place and copied into the crate at
 ``mission_close``. See ``specs/cli.md`` and ``specs/watchdog.md``.
-
-NOTE: behaviour is specified but **not yet implemented** — this module reserves
-the ``fair.verb`` entry point so registration stays valid and ``ros2 fair adopt``
-fails cleanly with a clear message rather than a plugin-load error.
 """
+
+import json
+from pathlib import Path
 
 from rich.console import Console
 
+from fair_ros.manifest import builder
 from fair_ros.subcommands import VerbExtension, _configure_logging
+from fair_ros.utils import fsio, paths
+from fair_ros.utils import topic_health as th
+from fair_ros.watchdog import watchdog
+
+
+def _is_bag_dir(bag_dir: Path) -> bool:
+    if not (bag_dir / "metadata.yaml").is_file():
+        return False
+    try:
+        return any(f.name.endswith(watchdog.STORAGE_SUFFIXES)
+                   for f in bag_dir.iterdir())
+    except OSError:
+        return False
 
 
 def run(args, console: Console | None = None) -> int:
     _configure_logging(getattr(args, "debug", False))
     console = console or Console()
-    console.print(
-        "[yellow]`ros2 fair adopt` isn't available yet.[/yellow] The behaviour "
-        "is specified in specs/cli.md and will land in a future release.")
+    want_json = getattr(args, "json", False)
+
+    bag_dir = Path(args.bagdir).expanduser()
+    try:
+        bag_dir = bag_dir.resolve()
+    except OSError:
+        pass
+
+    if not bag_dir.is_dir():
+        return _fail(console, want_json,
+                     f"There's no folder at {args.bagdir}.")
+    if not _is_bag_dir(bag_dir):
+        return _fail(console, want_json,
+                     f"{bag_dir.name} doesn't look like a recording "
+                     "(no metadata.yaml and storage file).")
+
+    # Busy guard — one bag, one mission: don't race the watchdog mid-recording.
+    state = watchdog.read_state()
+    if state and state.get("state") == "RECORDING":
+        return _fail(console, want_json,
+                     "The assistant is busy with another recording. Try again "
+                     "once it has finished.")
+
+    harvest_doc, _ = builder.load_spool()
+    if str(bag_dir) in {b.get("path")
+                        for b in (harvest_doc or {}).get("bags", [])}:
+        msg = "That recording is already part of the current mission."
+        if want_json:
+            console.print(json.dumps({"bag": bag_dir.name, "source": "adopted",
+                                      "path": str(bag_dir),
+                                      "status": "already_adopted"}))
+        else:
+            console.print(f"[yellow]{msg}[/yellow]")
+        return 0
+
+    # No context captured yet (watchdog never ran, or ROS was down): best-effort
+    # harvest now so the adopted bag still gets whatever is capturable.
+    if harvest_doc is None:
+        console.print("Capturing what I can about the robot and software…")
+        fsio.atomic_write_json(paths.harvest_json_path(), watchdog.run_pipeline())
+
+    watchdog.append_bag_record(bag_dir, source="adopted")
+
+    harvest_doc, _ = builder.load_spool()
+    bag: dict = next((b for b in (harvest_doc or {}).get("bags", [])
+                      if b.get("path") == str(bag_dir)), {})
+    warnings = bag.get("health_warnings", [])
+    if want_json:
+        console.print(json.dumps({
+            "bag": bag_dir.name, "source": "adopted", "path": str(bag_dir),
+            "status": "adopted", "health_warnings": len(warnings)}))
+        return 0
+
+    dur = th.humanize_duration(bag["duration_s"]) \
+        if bag.get("duration_s") else "length unknown"
+    size = f"{bag.get('size_bytes', 0) / 1e9:.1f} GB"
+    console.print(f"[green]Adopted[/green] {bag_dir.name} ({dur}, {size}).")
+    if warnings:
+        console.print(f"[yellow]Note:[/yellow] {warnings[0]['plain_text']}")
+    console.print("Run [bold]ros2 fair mission_close[/bold] to review and save.")
+    return 0
+
+
+def _fail(console: Console, want_json: bool, msg: str) -> int:
+    if want_json:
+        console.print(json.dumps({"status": "error", "detail": msg}))
+    else:
+        console.print(f"[red]{msg}[/red]")
     return 1
 
 
 class AdoptVerb(VerbExtension):
-    """Ingest a bag recorded outside mission_record (reserved; not yet built)."""
+    """Ingest a bag recorded outside mission_record into the current mission."""
 
     def add_arguments(self, parser, cli_name):
         parser.add_argument(

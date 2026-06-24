@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from fair_ros.archive import index, ro_crate
-from fair_ros.manifest.schema import MissionRecord
+from fair_ros.manifest.schema import FOREIGN_SOURCES, MissionRecord
 from fair_ros.utils import fsio, paths
 
 
@@ -163,6 +163,12 @@ def assemble(record: MissionRecord, harvest_doc: dict[str, Any],
         shutil.rmtree(staging)
     final = paths.archive_dir() / name
 
+    # Foreign recordings are referenced where they were made; drop any whose
+    # source vanished since detection so the crate never references a missing
+    # bag (the loss is reported to the operator via harvest_level_warnings).
+    record.bags = [b for b in record.bags
+                   if b.source not in FOREIGN_SOURCES or Path(b.path).is_dir()]
+
     spool_bags = [Path(b.path) for b in record.bags]
     moved: list[tuple[Path, Path]] = []
     try:
@@ -283,12 +289,18 @@ def assemble(record: MissionRecord, harvest_doc: dict[str, Any],
         raise AssemblyError(f"Saving failed ({exc.strerror or exc}). "
                             "Nothing was changed.") from exc
 
-    # Step 4: move bags — the only step that touches spool data
+    # Step 4: move spool bags (the only step touching spool data); foreign
+    # recordings are copied instead — their original belongs to the operator.
     try:
-        for src in spool_bags:
+        for bag, src in zip(record.bags, spool_bags, strict=True):
             dest = staging / "bags" / src.name
-            _move_bag(src, dest, progress)
-            moved.append((src, dest))
+            if bag.source in FOREIGN_SOURCES:
+                if progress:
+                    progress(f"Copying recording {src.name}")
+                shutil.copytree(src, dest)  # lives in staging; rollback via rmtree
+            else:
+                _move_bag(src, dest, progress)
+                moved.append((src, dest))
     except (OSError, AssemblyError) as exc:
         for src, dest in reversed(moved):
             if dest.exists() and not src.exists():

@@ -22,6 +22,7 @@ from typing import Any
 
 from fair_ros.manifest import builder
 from fair_ros.utils import fsio, paths, ros_env, topic_health
+from fair_ros.watchdog import recorder_scan
 
 log = logging.getLogger("fair_ros.watchdog")
 
@@ -35,6 +36,7 @@ ROS2_CLI_TIMEOUT_S = 20
 PARAM_DUMP_BUDGET_S = 60
 ROS_RETRY_INTERVAL_S = 60
 HEARTBEAT_S = 60
+FOREIGN_SCAN_INTERVAL_S = 5
 
 STORAGE_SUFFIXES = (".db3", ".mcap")
 
@@ -115,7 +117,8 @@ def run_pipeline() -> dict[str, Any]:
 class Watchdog:
     def __init__(self, inotify=None, clock: Callable[[], float] = time.monotonic,
                  pipeline: Callable[[], dict] = run_pipeline,
-                 harvest_in_thread: bool = True):
+                 harvest_in_thread: bool = True,
+                 scan_recorders: Callable[[], list] = recorder_scan.scan):
         if inotify is None:
             from inotify_simple import INotify
             inotify = INotify()
@@ -123,11 +126,17 @@ class Watchdog:
         self.clock = clock
         self.pipeline = pipeline
         self.harvest_in_thread = harvest_in_thread
+        # Injected so tests drive foreign-bag detection without real processes.
+        self.scan_recorders = scan_recorders
 
         self.state = IDLE
         self.since = _now_iso()
         self.active_bag_dir: Path | None = None
         self.queued_bags: list[Path] = []
+        # Bag dirs recorded outside mission_record (the /proc poller found them):
+        # path -> {"pid", "discovery"}. Drives in-place referencing, environ
+        # adoption, and the "detected" source tag at finalise.
+        self._foreign: dict[Path, dict] = {}
         self.last_bag_event: float | None = None
         self.last_bag_event_iso: str | None = None
         self._w1: int | None = None
@@ -136,6 +145,7 @@ class Watchdog:
         self._candidate_dirs: set[Path] = set()
         self._next_retry: float | None = None
         self._next_heartbeat: float = self.clock() + HEARTBEAT_S
+        self._next_foreign_scan: float = self.clock() + FOREIGN_SCAN_INTERVAL_S
         self._harvest_lock = threading.Lock()
         self._stop = threading.Event()
         # The watchdog's own (trusted) discovery settings, from watchdog.env.
@@ -220,7 +230,17 @@ class Watchdog:
 
     def _service_timers(self) -> None:
         now = self.clock()
+        if now >= self._next_foreign_scan and self.state in (IDLE, RECORDING):
+            self._next_foreign_scan = now + FOREIGN_SCAN_INTERVAL_S
+            self._poll_foreign()
         if self.state == RECORDING:
+            # A foreign recorder that has exited and written metadata.yaml is
+            # finished now — finalise without waiting out the inactivity window.
+            if self._foreign_recorder_done(self.active_bag_dir):
+                log.info("foreign recorder for %s exited, finalising",
+                         self.active_bag_dir)
+                self._finalise(self.active_bag_dir)
+                return
             if self.last_bag_event is not None and \
                     now - self.last_bag_event >= BAG_INACTIVITY_S:
                 log.info("bag inactive for %ss, finalising", BAG_INACTIVITY_S)
@@ -231,6 +251,57 @@ class Watchdog:
             if now >= self._next_heartbeat:
                 self._next_heartbeat = now + HEARTBEAT_S
                 self.write_state()
+
+    # -- foreign-bag detection (specs/watchdog.md) -------------------------
+
+    def _poll_foreign(self) -> None:
+        """Adopt recordings started outside the spool, found via the /proc scan.
+
+        New recordings enter RECORDING when idle (harvest adopts the recorder's
+        own DDS env); one found while busy is queued like a second spool bag.
+        """
+        try:
+            found = self.scan_recorders()
+        except Exception as exc:  # never let a scan glitch kill the loop
+            log.warning("recorder scan failed: %s", exc)
+            return
+        for rec in found:
+            bag_dir = Path(rec["output_dir"])
+            if self._is_tracked(bag_dir):
+                continue
+            self._foreign[bag_dir] = {"pid": rec.get("pid"),
+                                      "discovery": rec.get("discovery", {})}
+            if self.state == IDLE:
+                log.info("foreign recording detected: %s (pid %s)",
+                         bag_dir, rec.get("pid"))
+                self._enter_recording(bag_dir)
+            else:
+                log.warning("foreign recording %s appeared while busy with %s; "
+                            "queued", bag_dir, self.active_bag_dir)
+                self.queued_bags.append(bag_dir)
+
+    def _is_tracked(self, bag_dir: Path) -> bool:
+        """Whether this directory is already accounted for (skip if so)."""
+        if bag_dir == self.active_bag_dir or bag_dir in self.queued_bags \
+                or bag_dir in self._foreign:
+            return True
+        try:  # spool bags are handled by inotify, never by the poller
+            if paths.bags_dir().resolve() in bag_dir.parents:
+                return True
+        except OSError:
+            pass
+        harvest_doc, _ = builder.load_spool()
+        finalised = {b["path"] for b in (harvest_doc or {}).get("bags", [])}
+        return str(bag_dir) in finalised
+
+    def _foreign_recorder_done(self, bag_dir: Path | None) -> bool:
+        if bag_dir is None:
+            return False
+        info = self._foreign.get(bag_dir)
+        if info is None or info.get("pid") is None:
+            return False
+        return (not recorder_scan.pid_alive(info["pid"])
+                and (bag_dir / "metadata.yaml").is_file())
 
     # -- transitions -------------------------------------------------------
 
@@ -294,6 +365,7 @@ class Watchdog:
         except Exception:
             log.exception("failed to finalise %s", bag_dir)
         self._unwatch(bag_dir)
+        self._foreign.pop(bag_dir, None)
         self.state = IDLE
         self.since = _now_iso()
         self.active_bag_dir = None
@@ -331,21 +403,30 @@ class Watchdog:
             self._harvest_once()
 
     def _apply_session_env(self) -> None:
-        """Adopt the live recording shell's DDS discovery env (issue #29).
+        """Adopt the recording's DDS discovery env for this harvest (issue #29).
 
-        ``mission_start`` / ``mission_record`` drop the recorder's ROS
-        environment in the spool; adopting its DDS discovery keys (domain, RMW,
-        ...) over our own (which came from the possibly-stale ``watchdog.env``
-        snapshot) puts the harvest's ``ros2`` subprocesses and rclpy on the same
-        partition as the session actually recording.
+        For a ``mission_record`` session this comes from ``<spool>/session.env``;
+        for a foreign recording it comes from the recorder's own
+        ``/proc/<pid>/environ`` (already filtered to discovery keys by
+        ``recorder_scan``). Either way the harvest's ``ros2`` subprocesses and
+        rclpy land on the same DDS partition as the session actually recording,
+        rather than whatever the possibly-stale ``watchdog.env`` snapshot froze.
 
-        Only :data:`ros_env.SESSION_ADOPT_KEYS` are honoured. ``session.env`` is
-        group-writable and this process is root, so loader paths from it are
-        never applied — they would be a privilege-escalation vector. Keys the
-        session does not set revert to the watchdog's own baseline so a previous
-        session's value never leaks into a later harvest.
+        Only :data:`ros_env.SESSION_ADOPT_KEYS` are honoured — both sources are
+        untrusted for loader paths (``session.env`` is group-writable; this
+        process is root), so paths are never applied. Keys the source does not
+        set revert to the watchdog's own baseline so a previous session's value
+        never leaks into a later harvest.
         """
-        env = ros_env.safe_session_env(ros_env.read_file(paths.session_env_path()))
+        foreign = (self._foreign.get(self.active_bag_dir)
+                   if self.active_bag_dir is not None else None)
+        if foreign is not None:
+            env = dict(foreign.get("discovery", {}))
+            label = "recorder process"
+        else:
+            env = ros_env.safe_session_env(
+                ros_env.read_file(paths.session_env_path()))
+            label = "recording session"
         for key in ros_env.SESSION_ADOPT_KEYS:
             base = self._base_discovery.get(key)
             if key in env:
@@ -355,8 +436,7 @@ class Watchdog:
             else:
                 os.environ.pop(key, None)
         if env:
-            log.info("adopted recording session DDS env: %s",
-                     ", ".join(sorted(env)))
+            log.info("adopted %s DDS env: %s", label, ", ".join(sorted(env)))
 
     def _harvest_once(self) -> None:
         with self._harvest_lock:
@@ -388,7 +468,8 @@ class Watchdog:
         fsio.atomic_write_json(paths.harvest_json_path(), doc)
 
     def _append_bag_record(self, bag_dir: Path) -> None:
-        append_bag_record(bag_dir)
+        source = "detected" if bag_dir in self._foreign else "mission_record"
+        append_bag_record(bag_dir, source=source)
 
     # -- state file ----------------------------------------------------------
 
@@ -409,9 +490,14 @@ class Watchdog:
         })
 
 
-def append_bag_record(bag_dir: Path) -> None:
+def append_bag_record(bag_dir: Path, source: str = "mission_record") -> None:
     """Finalise one bag into harvest.json (also used by mission_close to
-    salvage bags the watchdog never saw)."""
+    salvage bags the watchdog never saw, and by ``ros2 fair adopt``).
+
+    ``source`` tags how the recording was captured ("mission_record",
+    "detected", or "adopted"); foreign sources are referenced in place and
+    copied — not moved — into the crate at archive time.
+    """
     harvest_doc, _ = builder.load_spool()
     if harvest_doc is None:
         harvest_doc = builder.compose_harvest(
@@ -432,6 +518,7 @@ def append_bag_record(bag_dir: Path) -> None:
         # no fabricated times or rates in that case.
         bag = {
             "path": str(bag_dir),
+            "source": source,
             "storage_format": meta["storage_identifier"],
             "size_bytes": fsio.dir_size_bytes(bag_dir),
             "start_time": (datetime.fromtimestamp(
@@ -458,6 +545,7 @@ def append_bag_record(bag_dir: Path) -> None:
         mtimes = [f.stat().st_mtime for f in files] or [time.time()]
         bag = {
             "path": str(bag_dir),
+            "source": source,
             "storage_format": "unknown",
             "size_bytes": fsio.dir_size_bytes(bag_dir),
             "start_time": datetime.fromtimestamp(

@@ -8,11 +8,12 @@ and ``new_mission_context`` is what mission_start writes.
 import json
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import fair_ros
 from fair_ros.manifest import validator
-from fair_ros.manifest.schema import MissionRecord
+from fair_ros.manifest.schema import FOREIGN_SOURCES, MissionRecord
 from fair_ros.utils import paths
 
 
@@ -259,6 +260,15 @@ def harvest_level_warnings(harvest: dict | None) -> list[str]:
     if any(c.get("digest") is None for c in containers):
         warnings.append("Some software containers couldn't be pinned to an "
                         "exact version.")
+    # A recording made outside mission_record is referenced where it was made;
+    # if the operator has since moved or deleted it, it can't be saved.
+    gone = sum(1 for bag in harvest.get("bags", [])
+               if bag.get("source") in FOREIGN_SOURCES
+               and not Path(bag.get("path", "")).is_dir())
+    if gone:
+        thing = "recording" if gone == 1 else "recordings"
+        warnings.append(f"{gone} {thing} made earlier can no longer be found "
+                        "where they were recorded, so they won't be saved.")
     for sensor in harvest.get("sensors", []):
         # Only warn when the live graph actually confirmed the sensor absent.
         # ``None`` means we couldn't reach the graph to check — don't accuse a
