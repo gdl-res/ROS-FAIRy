@@ -131,7 +131,10 @@ class BagTopic(_Model):
 class HealthWarning(_Model):
     topic: str
     sensor_id: str | None = None
-    kind: str  # gap | never_published | low_rate | unreliable_clock
+    # gap | never_published | low_rate | unreliable_clock | gap_relative
+    # (gap_relative: an ordinal dropout found by message ordering when the clock
+    #  was too unreliable for absolute timing — start/duration are unknown)
+    kind: str
     start_offset_s: float | None = None
     duration_s: float | None = None
     plain_text: str

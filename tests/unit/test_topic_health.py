@@ -139,6 +139,64 @@ def test_unreliable_clock_reported(tmp_path):
     assert "clock was not set correctly" in warnings[0]["plain_text"]
 
 
+def _bad_clock(n_epoch):
+    """``n_epoch`` increasing near-epoch stamps (filtered out as outliers, but
+    monotonic so they preserve receive order for ordinal analysis)."""
+    return [float(i) for i in range(1, n_epoch + 1)]
+
+
+def test_relative_dropout_flagged_when_clock_unreliable(tmp_path):
+    """Clock unusable, but ordering still shows /depth stop while /fix continues.
+
+    /depth has only near-epoch stamps (front of the stream); /fix also has real
+    stamps at the end, so /depth is absent from the whole tail of the order."""
+    bag = make_bag(tmp_path / "bag", {
+        "/fix": _bad_clock(30) + _steady(T0, T0 + 30, 1),     # runs throughout
+        "/depth": [i + 0.5 for i in range(1, 31)],            # stops early
+    })
+    # precondition: this really is the unreliable-clock path
+    meta = topic_health.parse_bag_metadata(bag)
+    series = topic_health.read_clean_series(bag, meta)
+    assert topic_health.bag_timing(bag, meta, series) == (None, None, None)
+
+    warnings = topic_health.analyse_bag(bag, SENSORS)
+    kinds = [w["kind"] for w in warnings]
+    assert "unreliable_clock" in kinds
+    rel = [w for w in warnings if w["kind"] == "gap_relative"]
+    assert len(rel) == 1
+    assert rel[0]["sensor_id"] == "sonar0"            # /depth
+    assert rel[0]["topic"] == "/depth"
+    # ordinal only: no invented absolute timing, and labelled approximate
+    assert rel[0]["start_offset_s"] is None
+    assert rel[0]["duration_s"] is None
+    assert "approximate" in rel[0]["plain_text"]
+    assert "second" not in rel[0]["plain_text"]       # no false precision
+
+
+def test_no_relative_dropout_when_all_topics_steady(tmp_path):
+    """Bad clock, but both topics run throughout: flag the clock, invent no
+    dropout."""
+    bag = make_bag(tmp_path / "bag", {
+        "/fix": _bad_clock(60) + _steady(T0, T0 + 10, 1),
+        "/depth": _bad_clock(60) + _steady(T0, T0 + 10, 1),
+    })
+    meta = topic_health.parse_bag_metadata(bag)
+    series = topic_health.read_clean_series(bag, meta)
+    assert topic_health.bag_timing(bag, meta, series) == (None, None, None)
+
+    warnings = topic_health.analyse_bag(bag, SENSORS)
+    assert [w["kind"] for w in warnings] == ["unreliable_clock"]
+
+
+def test_relative_dropout_needs_two_topics(tmp_path):
+    """A single-topic bad-clock bag can't be judged 'relative to others'."""
+    bag = make_bag(tmp_path / "bag", {
+        "/data": _bad_clock(30) + _steady(T0, T0 + 5, 2),
+    })
+    warnings = topic_health.analyse_bag(bag, sensors=[])
+    assert [w["kind"] for w in warnings] == ["unreliable_clock"]
+
+
 def test_humanize_duration():
     h = topic_health.humanize_duration
     assert h(1) == "1 second"

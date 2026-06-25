@@ -35,6 +35,15 @@ LOW_RATE_FRACTION = 0.25
 LOW_RATE_WINDOW_S = 10.0
 LOW_RATE_MIN_MESSAGES = 20
 
+# Relative (clock-independent) dropout detection, used only when the wall clock
+# was too unreliable for absolute timing. Receive order survives a clock step,
+# so a topic that goes quiet shows up as a long run of the *global* message
+# stream with no sample from it. These thresholds are deliberately conservative
+# — we'd rather miss a marginal dropout than invent one from noisy ordering.
+RELATIVE_MIN_MESSAGES = 20      # need an established presence to judge absence
+RELATIVE_DROPOUT_FRACTION = 0.25  # silent for at least this share of the stream
+RELATIVE_GAP_FACTOR = 5.0       # and far longer than the topic's own spacing
+
 # Timestamps before this (2000-01-01 UTC) cannot belong to a real field
 # recording. rosbag2 sets metadata starting_time to the minimum message
 # timestamp, so one such message drags the reported start back to ~1970 and
@@ -181,6 +190,73 @@ def _low_rate_warning(topic: str, sensor: dict | None, stamps: list[float],
     }
 
 
+def read_raw_series(bag_dir: Path,
+                    meta: dict[str, Any]) -> dict[str, list[float]] | None:
+    """Per-topic ascending receive-timestamps (seconds), with no filtering.
+
+    Used for ordinal, clock-independent analysis: even when the wall clock is
+    wrong, the recorder writes in receive order and a forward clock step keeps
+    that order, so message ordering still reveals a topic dropping out relative
+    to the rest. Returns None when no supported storage reader exists.
+    """
+    reader = bag_storage.get_reader(meta["storage_identifier"])
+    if reader is None or not reader.supported:
+        return None
+    try:
+        return reader.topic_timestamps(bag_dir, meta["relative_file_paths"])
+    except bag_storage.BagStorageUnsupported:
+        return None
+
+
+def _relative_gap_warnings(series: dict[str, list[float]],
+                           by_topic: dict[str, dict]) -> list[dict]:
+    """Ordinal dropout detection for when the wall clock is unusable.
+
+    Without trustworthy timestamps we can't say *how long* a topic was silent,
+    but we can still see it stop relative to the others: merge every message
+    into one receive-ordered stream and flag a topic that is absent from a long
+    contiguous run of it. Pure ordering — no absolute time, hence no false
+    precision. Needs at least two topics (a topic can only be judged silent
+    relative to the rest).
+    """
+    topics = {t: stamps for t, stamps in series.items() if stamps}
+    if len(topics) < 2:
+        return []
+    events = sorted((ts, t) for t, stamps in topics.items() for ts in stamps)
+    total = len(events)
+    positions: dict[str, list[int]] = {t: [] for t in topics}
+    for i, (_ts, topic) in enumerate(events):
+        positions[topic].append(i)
+
+    warnings = []
+    for topic, idx in positions.items():
+        if len(idx) < RELATIVE_MIN_MESSAGES:
+            continue
+        # Largest run of the global stream with no sample from this topic,
+        # including before its first message and after its last.
+        bounds = [0, *idx, total - 1]
+        max_gap = max(b - a for a, b in zip(bounds, bounds[1:], strict=False))
+        typical = statistics.median(
+            [b - a for a, b in zip(idx, idx[1:], strict=False)]) or 1
+        if max_gap < RELATIVE_GAP_FACTOR * typical \
+                or max_gap / total < RELATIVE_DROPOUT_FRACTION:
+            continue
+        sensor = by_topic.get(topic)
+        who, what = _friendly_name(sensor, topic), _signal_word(sensor)
+        warnings.append({
+            "topic": topic,
+            "sensor_id": sensor.get("sensor_id") if sensor else None,
+            "kind": "gap_relative",
+            "start_offset_s": None,
+            "duration_s": None,
+            "plain_text": (
+                f"{who} {what} stopped for a large part of the recording while "
+                "other data kept coming in. (The exact timing is approximate "
+                "because the device clock was unreliable.)"),
+        })
+    return warnings
+
+
 def read_clean_series(bag_dir: Path,
                       meta: dict[str, Any]) -> dict[str, list[float]] | None:
     """Per-topic ascending message timestamps (seconds), with outliers removed.
@@ -190,12 +266,8 @@ def read_clean_series(bag_dir: Path,
     timestamps. Stamps before ``EPOCH_FLOOR_S`` are dropped so one un-stamped
     message cannot poison gap detection or the recording window.
     """
-    reader = bag_storage.get_reader(meta["storage_identifier"])
-    if reader is None or not reader.supported:
-        return None
-    try:
-        series = reader.topic_timestamps(bag_dir, meta["relative_file_paths"])
-    except bag_storage.BagStorageUnsupported:
+    series = read_raw_series(bag_dir, meta)
+    if series is None:
         return None
     cleaned: dict[str, list[float]] = {}
     for topic, stamps in series.items():
@@ -303,9 +375,16 @@ def analyse_bag(bag_dir: Path, sensors: list[dict] | None = None, *,
 
     bag_start, bag_end, duration_s = bag_timing(bag_dir, meta, series)
     if duration_s is None or bag_start is None or bag_end is None:
-        # Clock unreliable: per-message timing is meaningless. Flag it once and
-        # skip gap/low-rate analysis (the never_published checks above stand).
+        # Clock unreliable: absolute timing is meaningless, so skip gap/low-rate
+        # analysis (the never_published checks above stand). Flag the bad clock,
+        # then fall back to ordinal detection — receive order survives a clock
+        # step, so we can still catch a topic dropping out relative to the rest
+        # (read the raw, unfiltered stamps; the cleaned series dropped the
+        # near-epoch majority that carries the ordering).
         warnings.append(_clock_unreliable_warning())
+        raw = read_raw_series(bag_dir, meta)
+        if raw:
+            warnings.extend(_relative_gap_warnings(raw, by_topic))
         return warnings
     for topic, stamps in series.items():
         topic_sensor = by_topic.get(topic)
