@@ -141,6 +141,54 @@ def _check_service_env() -> dict:
             "detail": f"distro: {env['ROS_DISTRO']}", "hint": ""}
 
 
+def _check_service_dds_profiles() -> dict:
+    """DDS discovery config the watchdog cannot follow a mission onto.
+
+    ``ROS_DOMAIN_ID`` / ``RMW_IMPLEMENTATION`` drift is reconciled from the
+    recording shell at mission time (via ``session.env``), but a CycloneDDS /
+    FastDDS profile is a *file path* — a loader-class setting the root watchdog
+    deliberately refuses to adopt from the group-writable ``session.env``
+    (:data:`ros_env.SESSION_ADOPT_KEYS`). So if the recorder relies on such a
+    profile and the frozen ``watchdog.env`` disagrees, the service silently
+    joins a different DDS partition and harvests an empty graph, and *nothing at
+    mission time can fix it* — only re-running setup can. ``_check_service_env``
+    misses this because it compares only :data:`ros_env.DISCOVERY_KEYS`.
+
+    This is the residual of the real-robot failure (recorder saw the full graph,
+    the service harvested ``ros_graph`` "failed"): a partition discriminated by
+    a Cyclone/Fast profile that runtime adoption structurally cannot carry.
+    """
+    if not os.environ.get("ROS_DISTRO"):
+        return {"status": SKIP, "title": "DDS profile match not checked",
+                "detail": "ROS is not sourced in this shell, nothing to compare",
+                "hint": ""}
+    env = ros_env.read_file(paths.watchdog_env_path())
+    if "ROS_DISTRO" not in env:
+        # The service has no ROS env at all — _check_service_env already FAILs
+        # on that; don't pile on a second, more confusing message.
+        return {"status": SKIP, "title": "DDS profile match not checked",
+                "detail": "the background service has no ROS environment yet",
+                "hint": ""}
+    in_use = [k for k in ros_env.DDS_PROFILE_KEYS if os.environ.get(k)]
+    if not in_use:
+        return {"status": OK, "title": "No DDS profile file in use",
+                "detail": "discovery uses domain/RMW only (runtime-reconcilable)",
+                "hint": ""}
+    drift = [f"{k} {env.get(k) or 'unset'} ≠ {os.environ[k]} here"
+             for k in in_use if env.get(k, "") != os.environ[k]]
+    if drift:
+        return {"status": WARN,
+                "title": "Background service can't follow your DDS profile",
+                "detail": "; ".join(drift),
+                "hint": "this is a profile *file* the watchdog won't adopt from "
+                        "a mission at runtime (it runs as root), so a mission "
+                        "can't reconcile it — re-run setup from this recording "
+                        "shell so it captures the profile: `sudo -E ros2 fair "
+                        "setup` (or `sudo su` then source ROS and the profile)"}
+    return {"status": OK, "title": "DDS profile matches the service",
+            "detail": ", ".join(in_use), "hint": ""}
+
+
 def _check_service_harvest() -> dict:
     """What the watchdog's own (service-context) harvest last achieved.
 
@@ -227,7 +275,8 @@ def _check_docker() -> dict:
 
 
 _CHECKS = (_check_identity, _check_watchdog, _check_ros_reachable,
-           _check_ros_environment, _check_service_env, _check_service_harvest,
+           _check_ros_environment, _check_service_env,
+           _check_service_dds_profiles, _check_service_harvest,
            _check_clock, _check_mcap, _check_disk, _check_docker)
 
 

@@ -32,6 +32,20 @@ ROS_ENV_NAMES = (
 # the recorder (an empty graph even though everything is "running").
 DISCOVERY_KEYS = ("ROS_DOMAIN_ID", "RMW_IMPLEMENTATION")
 
+# Discovery config that also decides the partition but is a *file path* (a
+# CycloneDDS/FastDDS profile). These steer discovery just like DISCOVERY_KEYS,
+# but because they are loader-class paths they are deliberately NOT in
+# SESSION_ADOPT_KEYS — the root watchdog will not follow a file path handed to
+# it by a group-writable session.env. The consequence is that a mismatch here
+# CANNOT be reconciled at mission time the way a domain/RMW drift is; only a
+# fresh `ros2 fair setup` (which re-freezes watchdog.env) fixes it. `doctor`
+# checks these against the recording shell so the mismatch surfaces before a
+# mission instead of as an empty graph after one.
+DDS_PROFILE_KEYS = (
+    "CYCLONEDDS_URI", "FASTRTPS_DEFAULT_PROFILES_FILE",
+    "FASTDDS_DEFAULT_PROFILES_FILE",
+)
+
 # The only keys the watchdog adopts at *runtime* from <spool>/session.env. That
 # file is group-writable and the watchdog runs as root, so honouring loader
 # paths (PATH / LD_LIBRARY_PATH / PYTHONPATH / AMENT_PREFIX_PATH ...) from it

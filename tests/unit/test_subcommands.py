@@ -583,6 +583,55 @@ def test_doctor_service_env_matches_is_ok(fair_dirs):
         assert doctor._check_service_env()["status"] == doctor.OK
 
 
+def _shell_env(fair_dirs, **extra):
+    # A clean shell environment for the dds-profile check that still lets
+    # paths.* resolve into the relocated test dirs (clear=True drops those).
+    return {"FAIR_ROS_VAR_DIR": str(fair_dirs["var"]),
+            "FAIR_ROS_CONFIG_DIR": str(fair_dirs["cfg"]), **extra}
+
+
+def test_doctor_dds_profile_mismatch_warns(fair_dirs):
+    # The recorder relies on a Cyclone profile the frozen watchdog.env lacks —
+    # runtime adoption can't carry a file path, so this must surface as a
+    # warning (the real-robot empty-graph failure mode).
+    from fair_ros.utils import ros_env
+    ros_env.write_file(paths.watchdog_env_path(), {"ROS_DISTRO": "jazzy"})
+    env = _shell_env(fair_dirs, ROS_DISTRO="jazzy",
+                     CYCLONEDDS_URI="/etc/cyclone/peers.xml")
+    with mock.patch.dict(doctor.os.environ, env, clear=True):
+        c = doctor._check_service_dds_profiles()
+    assert c["status"] == doctor.WARN and "CYCLONEDDS_URI" in c["detail"]
+    assert "setup" in c["hint"]
+
+
+def test_doctor_dds_profile_match_is_ok(fair_dirs):
+    from fair_ros.utils import ros_env
+    ros_env.write_file(paths.watchdog_env_path(),
+                       {"ROS_DISTRO": "jazzy",
+                        "CYCLONEDDS_URI": "/etc/cyclone/peers.xml"})
+    env = _shell_env(fair_dirs, ROS_DISTRO="jazzy",
+                     CYCLONEDDS_URI="/etc/cyclone/peers.xml")
+    with mock.patch.dict(doctor.os.environ, env, clear=True):
+        assert doctor._check_service_dds_profiles()["status"] == doctor.OK
+
+
+def test_doctor_dds_profile_none_in_use_is_ok(fair_dirs):
+    from fair_ros.utils import ros_env
+    ros_env.write_file(paths.watchdog_env_path(), {"ROS_DISTRO": "jazzy"})
+    with mock.patch.dict(doctor.os.environ,
+                         _shell_env(fair_dirs, ROS_DISTRO="jazzy"), clear=True):
+        c = doctor._check_service_dds_profiles()
+    assert c["status"] == doctor.OK and "domain/RMW" in c["detail"]
+
+
+def test_doctor_dds_profile_skips_without_service_env(fair_dirs):
+    # No watchdog.env yet → _check_service_env owns that failure; this one skips
+    # rather than emitting a confusing second message.
+    with mock.patch.dict(doctor.os.environ,
+                         _shell_env(fair_dirs, ROS_DISTRO="jazzy"), clear=True):
+        assert doctor._check_service_dds_profiles()["status"] == doctor.SKIP
+
+
 def test_doctor_check_that_raises_becomes_fail():
     def boom():
         raise RuntimeError("nope")
