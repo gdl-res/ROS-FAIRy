@@ -23,6 +23,13 @@ log = logging.getLogger("fair_ros.watchdog.recorder_scan")
 
 STORAGE_SUFFIXES = (".db3", ".mcap")
 
+# Injectable for tests: point at a fake proc tree instead of the real /proc.
+PROC = Path("/proc")
+
+# Recorder pids already reported as unresolvable, so the warning appears once
+# per recorder in the journal rather than on every poll tick.
+_reported_unresolved: set[int] = set()
+
 
 class FoundRecorder(TypedDict):
     pid: int
@@ -32,7 +39,7 @@ class FoundRecorder(TypedDict):
 
 def _read_cmdline(pid: str) -> list[str]:
     try:
-        raw = Path("/proc", pid, "cmdline").read_bytes()
+        raw = (PROC / pid / "cmdline").read_bytes()
     except OSError:
         return []
     return [tok for tok in raw.decode("utf-8", "replace").split("\0") if tok]
@@ -67,9 +74,36 @@ def _output_arg(argv: list[str]) -> str | None:
 
 def _proc_cwd(pid: str) -> Path | None:
     try:
-        return Path(os.readlink(f"/proc/{pid}/cwd"))
+        return Path(os.readlink(PROC / pid / "cwd"))
     except OSError:
         return None
+
+
+def _fd_output(pid: str) -> Path | None:
+    """The bag directory holding a storage file the recorder has open.
+
+    rosbag2 keeps its ``.db3``/``.mcap`` open for the whole recording, so the
+    open-fd table is the authoritative answer to "where is it writing" — no
+    argv parsing, no cwd guessing, and it resolves the instant recording
+    starts. Unreadable fds (permissions, races) fall through to the
+    argv/cwd heuristic in :func:`_resolve_output`.
+    """
+    try:
+        fds = list((PROC / pid / "fd").iterdir())
+    except OSError:
+        return None
+    for fd in fds:
+        try:
+            target = os.readlink(fd)
+        except OSError:
+            continue
+        # Non-file fds read back as "socket:[...]" etc. and a deleted file as
+        # "/path (deleted)" — neither ends with a storage suffix.
+        if target.endswith(STORAGE_SUFFIXES):
+            bag_dir = Path(target).parent
+            if bag_dir.is_dir():
+                return bag_dir
+    return None
 
 
 def _discovery_env(pid: str) -> dict[str, str]:
@@ -81,7 +115,7 @@ def _discovery_env(pid: str) -> dict[str, str]:
     environment is the authoritative source.
     """
     try:
-        raw = Path("/proc", pid, "environ").read_bytes()
+        raw = (PROC / pid / "environ").read_bytes()
     except OSError:
         return {}
     env: dict[str, str] = {}
@@ -124,24 +158,46 @@ def _resolve_output(argv: list[str], cwd: Path) -> Path | None:
     return max(candidates, key=lambda d: d.stat().st_mtime) if candidates else None
 
 
-def scan() -> list[FoundRecorder]:
-    """Every live rosbag2 recorder whose output directory can be resolved."""
-    found: list[FoundRecorder] = []
+def record_pids() -> list[int]:
+    """Pids of live ``bag record`` processes, by cmdline alone.
+
+    cmdline is world-readable, so this works without root — ``mission_status``
+    uses it to report a recorder the (unprivileged) scan cannot resolve.
+    """
     try:
-        pids = [p for p in os.listdir("/proc") if p.isdigit()]
+        pids = [p for p in os.listdir(PROC) if p.isdigit()]
     except OSError:
-        return found
-    for pid in pids:
+        return []
+    return [int(p) for p in pids if _is_record_cmd(_read_cmdline(p))]
+
+
+def scan() -> list[FoundRecorder]:
+    """Every live rosbag2 recorder whose output directory can be resolved.
+
+    Resolution order: the recorder's own open storage fd (authoritative,
+    instant), then the argv/cwd heuristic. A recorder that matches but cannot
+    be resolved is logged once so the journal explains the miss.
+    """
+    found: list[FoundRecorder] = []
+    for pid_int in record_pids():
+        pid = str(pid_int)
         argv = _read_cmdline(pid)
-        if not _is_record_cmd(argv):
+        if not argv:  # exited between the pid sweep and this read
             continue
-        cwd = _proc_cwd(pid)
-        if cwd is None:
-            continue
-        bag_dir = _resolve_output(argv, cwd)
+        bag_dir = _fd_output(pid)
         if bag_dir is None:
+            cwd = _proc_cwd(pid)
+            bag_dir = _resolve_output(argv, cwd) if cwd is not None else None
+        if bag_dir is None:
+            if pid_int not in _reported_unresolved:
+                _reported_unresolved.add(pid_int)
+                log.warning(
+                    "recorder pid %s matched (%s, cwd %s) but its output "
+                    "directory could not be resolved; recording will not be "
+                    "captured", pid, " ".join(argv), _proc_cwd(pid))
             continue
-        found.append(FoundRecorder(pid=int(pid),
+        _reported_unresolved.discard(pid_int)
+        found.append(FoundRecorder(pid=pid_int,
                                    output_dir=bag_dir.resolve(),
                                    discovery=_discovery_env(pid)))
     return found
@@ -149,4 +205,4 @@ def scan() -> list[FoundRecorder]:
 
 def pid_alive(pid: int) -> bool:
     """Whether a recorder process is still running (used as a finalise hint)."""
-    return Path(f"/proc/{pid}").exists()
+    return (PROC / str(pid)).exists()

@@ -235,6 +235,16 @@ spool contents, and `mission_context.json`:
   heartbeat while RECORDING).
 - Mission briefing: operator + goal, or "not started yet".
 - Recording: active bag, size so far, "growing" indicator; or "none".
+- Outside recording (only when the recorder-process scan sees one outside the
+  spool): one line per live recording with its capture status — "found it —
+  capturing", "noticed — will be captured when the current recording
+  finishes" (queued), "captured — will be included when you close the
+  mission", or "NOT captured — … ask your engineer" (the watchdog should
+  adopt within `FOREIGN_SCAN_INTERVAL_S`, so a persistent miss is a real
+  fault). A recorder matched by cmdline whose output this (unprivileged)
+  command cannot resolve is still reported ("the background assistant may
+  still capture it") rather than hidden. In `--json` this is the
+  `live_recorders` key (`recordings[].{path,status}` + `unresolved_pids`).
 - Context captured: per harvest module, plain words ("software versions ✓",
   "robot description ✗ — will retry"). Modules: robot identity, computer
   details, Python environment, connected hardware, software versions and

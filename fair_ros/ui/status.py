@@ -7,9 +7,11 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from fair_ros.manifest import builder
 from fair_ros.ui.review import human_size
 from fair_ros.utils import fsio, paths
 from fair_ros.utils.topic_health import humanize_duration
+from fair_ros.watchdog import recorder_scan
 
 STALE_HEARTBEAT_S = 300
 
@@ -56,6 +58,66 @@ def assistant_line(state: dict | None) -> str:
     return "watching — ready for the next recording"
 
 
+def outside_recordings(state: dict | None, recorders: list | None = None,
+                       matched_pids: list[int] | None = None) -> dict:
+    """What the recorder scan sees outside the spool, judged against the
+    watchdog: is each live recording being captured, queued, already captured,
+    or missed? ``recorders``/``matched_pids`` are injectable for tests.
+
+    Run as the (unprivileged) operator, the scan may match a recorder by
+    cmdline yet fail to resolve where it writes — those pids are reported
+    separately rather than silently dropped, because the root watchdog may
+    still see them.
+    """
+    if recorders is None:
+        recorders = recorder_scan.scan()
+    if matched_pids is None:
+        matched_pids = recorder_scan.record_pids()
+    harvest, _ = builder.load_spool()
+    captured = {b["path"] for b in (harvest or {}).get("bags", [])}
+    active = (state or {}).get("active_bag_dir")
+    queued = set((state or {}).get("queued_bags") or [])
+    entries = []
+    for rec in recorders:
+        path = str(rec["output_dir"])
+        try:  # spool bags are the Recording row's business, not this one's
+            if paths.bags_dir().resolve() in Path(path).parents:
+                continue
+        except OSError:
+            pass
+        if path == active:
+            status = "capturing"
+        elif path in queued:
+            status = "queued"
+        elif path in captured:
+            status = "captured"
+        else:
+            status = "missed"
+        entries.append({"path": path, "status": status})
+    seen = {r["pid"] for r in recorders}
+    return {"recordings": entries,
+            "unresolved_pids": [p for p in matched_pids if p not in seen]}
+
+
+_OUTSIDE_LABELS = {
+    "capturing": "found it — capturing the details now",
+    "queued": "noticed — will be captured when the current recording finishes",
+    "captured": "captured — will be included when you close the mission",
+    "missed": "NOT captured — if this doesn't change in a few seconds, "
+              "ask your engineer to check the recording assistant",
+}
+
+
+def outside_lines(outside: dict) -> list[str]:
+    lines = [f"{r['path']} — {_OUTSIDE_LABELS[r['status']]}"
+             for r in outside["recordings"]]
+    if outside["unresolved_pids"]:
+        lines.append("a recording seems to be running, but this command "
+                     "can't see where it saves — the background assistant "
+                     "may still capture it")
+    return lines
+
+
 def harvest_lines(state: dict | None) -> list[str]:
     if not state or not state.get("harvest_status"):
         return []
@@ -74,8 +136,10 @@ def harvest_lines(state: dict | None) -> list[str]:
 
 
 def show_status(state: dict | None, context: dict | None,
-                console: Console | None = None) -> None:
+                console: Console | None = None,
+                outside: dict | None = None) -> None:
     console = console or Console()
+    outside = outside if outside is not None else outside_recordings(state)
     table = Table.grid(padding=(0, 2))
     table.add_column(style="bold")
     table.add_column()
@@ -105,13 +169,17 @@ def show_status(state: dict | None, context: dict | None,
     else:
         table.add_row("Recording", "none")
 
+    for line in outside_lines(outside):
+        table.add_row("Outside recording", line)
+
     lines = harvest_lines(state)
     if lines:
         table.add_row("Context captured", "\n".join(lines))
     console.print(Panel(table, title="fair-ros status", border_style="cyan"))
 
 
-def status_as_dict(state: dict | None, context: dict | None) -> dict:
+def status_as_dict(state: dict | None, context: dict | None,
+                   outside: dict | None = None) -> dict:
     """Machine-readable status for --json (the one sanctioned JSON output)."""
     bags = sorted(str(p) for p in paths.bags_dir().glob("*") if p.is_dir()) \
         if paths.bags_dir().is_dir() else []
@@ -120,4 +188,6 @@ def status_as_dict(state: dict | None, context: dict | None) -> dict:
         "watchdog_state": state,
         "mission_context": context,
         "spool_bags": bags,
+        "live_recorders":
+            outside if outside is not None else outside_recordings(state),
     }

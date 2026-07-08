@@ -36,7 +36,9 @@ ROS2_CLI_TIMEOUT_S = 20
 PARAM_DUMP_BUDGET_S = 60
 ROS_RETRY_INTERVAL_S = 60
 HEARTBEAT_S = 60
-FOREIGN_SCAN_INTERVAL_S = 5
+# 1 s keeps short recordings inside the detection window; the per-tick cost is
+# only a /proc cmdline sweep — cwd/fd/environ reads happen on a match.
+FOREIGN_SCAN_INTERVAL_S = 1
 
 STORAGE_SUFFIXES = (".db3", ".mcap")
 
@@ -485,6 +487,7 @@ class Watchdog:
             "heartbeat_at": _now_iso(),
             "active_bag_dir": str(self.active_bag_dir)
             if self.active_bag_dir else None,
+            "queued_bags": [str(p) for p in self.queued_bags],
             "last_bag_event_at": self.last_bag_event_iso,
             "harvest_status": status,
         })
