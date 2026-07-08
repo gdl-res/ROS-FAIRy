@@ -74,6 +74,88 @@ def test_scan_returns_empty_when_no_recorder():
     assert recorder_scan.scan() == []  # no ros2 bag record on this machine
 
 
+# -- recorder_scan against a fake /proc tree ------------------------------------
+
+RECORD_ARGV = ["python3", "/opt/ros/jazzy/bin/ros2", "bag", "record"]
+
+
+def _fake_proc(tmp_path, monkeypatch, pid, argv, cwd=None, fd_targets=(),
+               environ=b""):
+    """Build a minimal /proc/<pid>/ and point recorder_scan at it."""
+    p = tmp_path / "proc" / str(pid)
+    (p / "fd").mkdir(parents=True)
+    (p / "cmdline").write_bytes(b"\0".join(a.encode() for a in argv) + b"\0")
+    (p / "environ").write_bytes(environ)
+    if cwd is not None:
+        os.symlink(cwd, p / "cwd")
+    for i, target in enumerate(fd_targets, start=3):
+        os.symlink(target, p / "fd" / str(i))
+    monkeypatch.setattr(recorder_scan, "PROC", tmp_path / "proc")
+    monkeypatch.setattr(recorder_scan, "_reported_unresolved", set())
+
+
+def test_fd_output_finds_open_storage_file(tmp_path, monkeypatch):
+    bag = tmp_path / "somewhere" / "run42"
+    bag.mkdir(parents=True)
+    (bag / "run42_0.mcap").touch()
+    _fake_proc(tmp_path, monkeypatch, 100, RECORD_ARGV,
+               fd_targets=["pipe:[1]", "socket:[2]", str(bag / "run42_0.mcap")])
+    assert recorder_scan._fd_output("100") == bag
+
+
+def test_fd_output_ignores_deleted_and_nonstorage(tmp_path, monkeypatch):
+    _fake_proc(tmp_path, monkeypatch, 101, RECORD_ARGV,
+               fd_targets=["/gone/run_0.mcap (deleted)", "anon_inode:[ev]",
+                           "/no/such/dir/run_0.db3"])  # parent dir missing
+    assert recorder_scan._fd_output("101") is None
+
+
+def test_scan_resolves_via_fd_without_output_arg(tmp_path, monkeypatch):
+    # No -o and a cwd with no rosbag2_* dir: only the open fd can answer.
+    bag = tmp_path / "elsewhere" / "mybag"
+    bag.mkdir(parents=True)
+    (bag / "mybag_0.db3").touch()
+    cwd = tmp_path / "home"
+    cwd.mkdir()
+    _fake_proc(tmp_path, monkeypatch, 200, RECORD_ARGV + ["/scan"], cwd=cwd,
+               fd_targets=[str(bag / "mybag_0.db3")],
+               environ=b"ROS_DOMAIN_ID=7\0SECRET=x\0")
+    found = recorder_scan.scan()
+    assert [r["pid"] for r in found] == [200]
+    assert found[0]["output_dir"] == bag.resolve()
+    assert found[0]["discovery"] == {"ROS_DOMAIN_ID": "7"}
+
+
+def test_scan_falls_back_to_argv_cwd_when_no_fd(tmp_path, monkeypatch):
+    cwd = tmp_path / "home"
+    bag = make_bag(cwd / "run", {"/t": [1.0, 2.0]})
+    (bag / "metadata.yaml").unlink()  # live: storage present, no metadata
+    _fake_proc(tmp_path, monkeypatch, 300,
+               RECORD_ARGV + ["-o", "run", "/t"], cwd=cwd)
+    found = recorder_scan.scan()
+    assert [r["output_dir"] for r in found] == [bag.resolve()]
+
+
+def test_scan_warns_once_when_output_unresolvable(tmp_path, monkeypatch,
+                                                  caplog):
+    cwd = tmp_path / "home"
+    cwd.mkdir()  # nothing being written anywhere findable
+    _fake_proc(tmp_path, monkeypatch, 400, RECORD_ARGV + ["/t"], cwd=cwd)
+    with caplog.at_level("WARNING", logger="fair_ros.watchdog.recorder_scan"):
+        assert recorder_scan.scan() == []
+        assert recorder_scan.scan() == []  # second poll: no repeat
+    warnings = [r for r in caplog.records
+                if "could not be resolved" in r.message]
+    assert len(warnings) == 1
+    assert "400" in warnings[0].getMessage()
+
+
+def test_record_pids_ignores_non_recorders(tmp_path, monkeypatch):
+    _fake_proc(tmp_path, monkeypatch, 500,
+               ["python3", "ros2", "bag", "play", "x"])
+    assert recorder_scan.record_pids() == []
+
+
 # -- watchdog foreign detection ------------------------------------------------
 
 def _foreign_dog(found):
@@ -279,6 +361,57 @@ def test_foreign_bag_vanishing_mid_assembly_is_not_fatal(
     assert [b.source for b in record.bags] == ["mission_record"]
     # and the crate is internally consistent (manifest matches what's on disk)
     assert all((crate / b.path).is_dir() for b in record.bags)
+
+
+# -- mission_status: live-recorder surfacing ------------------------------------
+
+def _outside(state, recs, pids):
+    from fair_ros.ui import status as status_ui
+    return status_ui.outside_recordings(state, recorders=recs,
+                                        matched_pids=pids)
+
+
+def test_outside_recordings_statuses(fair_dirs, tmp_path):
+    a, b, c, d = (tmp_path / n for n in "abcd")
+    harvest = good_pipeline()
+    harvest["bags"] = [_bag_entry(c, "detected")]
+    fsio.atomic_write_json(paths.harvest_json_path(), harvest)
+    state = {"active_bag_dir": str(a), "queued_bags": [str(b)]}
+    recs = [{"pid": 1, "output_dir": a}, {"pid": 2, "output_dir": b},
+            {"pid": 3, "output_dir": c}, {"pid": 4, "output_dir": d},
+            {"pid": 5, "output_dir": paths.bags_dir() / "spool_bag"}]
+    out = _outside(state, recs, [1, 2, 3, 4, 5, 9])
+    assert {r["path"]: r["status"] for r in out["recordings"]} == {
+        str(a): "capturing", str(b): "queued",
+        str(c): "captured", str(d): "missed"}  # spool bag excluded
+    assert out["unresolved_pids"] == [9]
+
+
+def test_outside_lines_plain_language(fair_dirs, tmp_path):
+    from fair_ros.ui import status as status_ui
+    out = _outside({"active_bag_dir": None, "queued_bags": []},
+                   [{"pid": 1, "output_dir": tmp_path / "x"}], [1, 2])
+    lines = status_ui.outside_lines(out)
+    assert any("NOT captured" in line for line in lines)
+    assert any("can't see where it saves" in line for line in lines)
+
+
+def test_status_as_dict_has_live_recorders(fair_dirs):
+    from fair_ros.ui import status as status_ui
+    doc = status_ui.status_as_dict(None, None)
+    assert doc["live_recorders"] == {"recordings": [], "unresolved_pids": []}
+
+
+def test_show_status_renders_outside_recording(fair_dirs, tmp_path):
+    import io
+
+    from rich.console import Console
+
+    from fair_ros.ui import status as status_ui
+    out = _outside({}, [{"pid": 1, "output_dir": tmp_path / "run"}], [1])
+    console = Console(file=io.StringIO(), width=120)
+    status_ui.show_status(None, None, console=console, outside=out)
+    assert "Outside recording" in console.file.getvalue()
 
 
 # -- builder: vanished-foreign warning -----------------------------------------

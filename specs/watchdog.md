@@ -165,9 +165,15 @@ the watchdog scans `/proc` for a live rosbag2 **recorder** process:
   `reindex` — only an active *recorder* counts. Process detection (not
   filesystem watching) is what distinguishes a real recording from someone
   copying a `.mcap` file around.
-- Resolve the output directory from the recorder's `--output`/`-o` argument,
-  resolving a relative path against `/proc/<pid>/cwd`; with no `-o`, rosbag2's
-  default is `rosbag2_<timestamp>/` in the cwd.
+- Resolve the output directory **from the recorder's open file descriptors
+  first** (`/proc/<pid>/fd/*` — rosbag2 holds its `.db3`/`.mcap` open for the
+  whole recording, so this is authoritative and resolves the instant recording
+  starts, with no argv or cwd guessing). Fall back to the recorder's
+  `--output`/`-o` argument, resolving a relative path against
+  `/proc/<pid>/cwd`; with no `-o`, rosbag2's default is
+  `rosbag2_<timestamp>/` in the cwd.
+- A recorder whose cmdline matches but whose output cannot be resolved is
+  logged (WARNING, once per pid) so the journal explains any miss.
 - **Dedupe.** Ignore any output dir that is already tracked: spool bags from
   `mission_record` (already covered by inotify), foreign bags already being
   tracked, and anything already present in `harvest.json.bags[]`.
@@ -207,7 +213,7 @@ the same FINALISING processing and appends a `source = "adopted"` bag entry.
 | Constant | Value | Where |
 |---|---|---|
 | `BAG_INACTIVITY_S` | 30 | RECORDING → FINALISING fallback |
-| `FOREIGN_SCAN_INTERVAL_S` | 5 | recorder-process poll for foreign bags |
+| `FOREIGN_SCAN_INTERVAL_S` | 1 | recorder-process poll for foreign bags (a cmdline sweep per tick; cwd/fd/environ reads only on a match, so short recordings stay inside the window) |
 | `RCLPY_TIMEOUT_S` | 5 | ros_descriptions |
 | `DOCKER_TIMEOUT_S` | 10 | docker_info total |
 | `PIP_TIMEOUT_S` | 30 | python_env: each pip subprocess |
